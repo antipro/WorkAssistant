@@ -3,9 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WorkAssistant</title>
+    <title>WorkAssistant Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // Fallback if CDN is blocked
+        if (typeof Vue === 'undefined' || typeof axios === 'undefined') {
+            document.addEventListener('DOMContentLoaded', function() {
+                var msg = document.createElement('div');
+                msg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.3); text-align: center; z-index: 9999;';
+                msg.innerHTML = '<h2>Unable to Load Application</h2><p>Vue.js and Axios are required but could not be loaded from CDN.</p><p>Please ensure you have internet access or configure a local proxy.</p>';
+                document.body.appendChild(msg);
+            });
+        }
+    </script>
     <style>
         * {
             margin: 0;
@@ -15,126 +26,77 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+            background: #f0f2f5;
+            height: 100vh;
+            overflow: hidden;
         }
 
         #app {
-            max-width: 1200px;
-            margin: 0 auto;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
-        .header {
+        /* Login Screen */
+        .login-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            width: 400px;
+            max-width: 90%;
+        }
+
+        .login-box h1 {
             text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
+            color: #667eea;
             margin-bottom: 10px;
         }
 
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .tab-button {
-            flex: 1;
-            padding: 15px;
-            background: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 1em;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-
-        .tab-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-
-        .tab-button.active {
-            background: #667eea;
-            color: white;
-        }
-
-        .content {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-
-        .section {
-            display: none;
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 5px;
-        }
-
-        .status-indicator.online {
-            background: #4caf50;
-        }
-
-        .status-indicator.offline {
-            background: #f44336;
+        .login-box p {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
         }
 
         .form-group {
             margin-bottom: 20px;
         }
 
-        label {
+        .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             color: #333;
         }
 
-        textarea, select {
+        .form-group input {
             width: 100%;
             padding: 12px;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
             font-size: 1em;
-            font-family: inherit;
             transition: border-color 0.3s;
         }
 
-        textarea:focus, select:focus {
+        .form-group input:focus {
             outline: none;
             border-color: #667eea;
         }
 
-        textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
-
-        button {
+        .btn {
+            width: 100%;
+            padding: 12px;
             background: #667eea;
             color: white;
-            padding: 12px 30px;
             border: none;
             border-radius: 8px;
             cursor: pointer;
@@ -143,147 +105,347 @@
             transition: all 0.3s;
         }
 
-        button:hover {
+        .btn:hover {
             background: #5568d3;
             transform: translateY(-2px);
         }
 
-        button:disabled {
+        .btn:disabled {
             background: #ccc;
             cursor: not-allowed;
             transform: none;
         }
 
-        .response-box {
-            margin-top: 20px;
+        /* Chat Layout */
+        .chat-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Left Sidebar - Channels */
+        .channels-sidebar {
+            width: 250px;
+            background: #2c2f33;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #23272a;
+        }
+
+        .sidebar-header {
             padding: 15px;
-            background: #f5f5f5;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+            background: #23272a;
+            border-bottom: 1px solid #1a1d20;
+            font-weight: 600;
         }
 
-        .response-box pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-size: 0.95em;
-            line-height: 1.6;
+        .channels-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0;
         }
 
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #666;
+        .channel-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
         }
 
-        .error {
-            color: #f44336;
-            padding: 10px;
-            background: #ffebee;
-            border-radius: 5px;
-            margin-top: 10px;
+        .channel-item:hover {
+            background: #393c42;
         }
 
-        .list-item {
-            padding: 15px;
-            margin-bottom: 10px;
-            background: #f9f9f9;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+        .channel-item.active {
+            background: #5568d3;
         }
 
-        .list-item h3 {
-            margin-bottom: 5px;
+        .channel-item.private {
+            background: #7289da;
+        }
+
+        .channel-item.private:hover {
+            background: #677bc4;
+        }
+
+        .channel-icon {
+            margin-right: 8px;
+        }
+
+        /* Center - Chat Area */
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+
+        .chat-header {
+            padding: 15px 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            font-size: 1.1em;
             color: #333;
         }
 
-        .list-item p {
-            color: #666;
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .message-author {
+            font-weight: 600;
+            margin-right: 8px;
+            color: #5568d3;
+        }
+
+        .message-author.ai {
+            color: #7289da;
+        }
+
+        .message-time {
+            font-size: 0.85em;
+            color: #999;
+        }
+
+        .message-content {
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .message-input-area {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .message-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: none;
+            height: 45px;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .send-btn {
+            padding: 12px 25px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .send-btn:hover {
+            background: #5568d3;
+        }
+
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .input-hint {
+            font-size: 0.85em;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        /* Right Sidebar - Users */
+        .users-sidebar {
+            width: 200px;
+            background: #f5f5f5;
+            border-left: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .users-header {
+            padding: 15px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+        }
+
+        .users-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .user-item {
+            padding: 8px 10px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .user-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            margin-right: 8px;
+        }
+
+        .user-name {
+            color: #333;
             font-size: 0.9em;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .error-message {
+            padding: 10px;
+            background: #ffebee;
+            color: #f44336;
+            border-radius: 5px;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
     <div id="app">
-        <div class="header">
-            <h1>🤖 WorkAssistant</h1>
-            <p>Your AI-powered work companion integrated with Ollama and Zentao</p>
-        </div>
-
-        <div class="tabs">
-            <button class="tab-button" :class="{ active: activeTab === 'ollama' }" @click="activeTab = 'ollama'">
-                Ollama AI
-            </button>
-            <button class="tab-button" :class="{ active: activeTab === 'zentao' }" @click="activeTab = 'zentao'">
-                Zentao Projects
-            </button>
-        </div>
-
-        <div class="content">
-            <!-- Ollama Section -->
-            <div class="section" :class="{ active: activeTab === 'ollama' }">
-                <h2>💬 Chat with Ollama AI</h2>
-                <p>
-                    <span class="status-indicator" :class="ollamaStatus ? 'online' : 'offline'"></span>
-                    {{ ollamaStatus ? 'Connected' : 'Disconnected' }}
-                </p>
-
+        <!-- Login Screen -->
+        <div v-if="!currentUser" class="login-screen">
+            <div class="login-box">
+                <h1>🤖 WorkAssistant Chat</h1>
+                <p>Enter your nickname to start chatting</p>
                 <div class="form-group">
-                    <label for="model-select">Select Model:</label>
-                    <select id="model-select" v-model="selectedModel">
-                        <option value="">Default Model</option>
-                        <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
-                    </select>
+                    <label for="nickname">Nickname</label>
+                    <input 
+                        type="text" 
+                        id="nickname" 
+                        v-model="nickname" 
+                        @keyup.enter="login"
+                        placeholder="Enter your nickname"
+                        autofocus
+                    >
                 </div>
-
-                <div class="form-group">
-                    <label for="prompt">Enter your prompt:</label>
-                    <textarea id="prompt" v-model="prompt" placeholder="Type your question or prompt here..."></textarea>
-                </div>
-
-                <button @click="generateResponse" :disabled="loading || !prompt">
-                    {{ loading ? 'Generating...' : 'Generate' }}
+                <div v-if="loginError" class="error-message">{{ loginError }}</div>
+                <button class="btn" @click="login" :disabled="!nickname.trim() || loggingIn">
+                    {{ loggingIn ? 'Joining...' : 'Join Chat' }}
                 </button>
+            </div>
+        </div>
 
-                <div v-if="error" class="error">{{ error }}</div>
-
-                <div v-if="response" class="response-box">
-                    <h3>Response:</h3>
-                    <pre>{{ response }}</pre>
+        <!-- Chat Interface -->
+        <div v-if="currentUser" class="chat-container">
+            <!-- Left Sidebar - Channels -->
+            <div class="channels-sidebar">
+                <div class="sidebar-header">Channels</div>
+                <div class="channels-list">
+                    <div 
+                        v-for="channel in channels" 
+                        :key="channel.id"
+                        class="channel-item"
+                        :class="{ active: currentChannel && currentChannel.id === channel.id, private: channel.isPrivate }"
+                        @click="selectChannel(channel)"
+                    >
+                        <span class="channel-icon">{{ channel.isPrivate ? '🔒' : '#' }}</span>
+                        <span>{{ channel.name }}</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Zentao Section -->
-            <div class="section" :class="{ active: activeTab === 'zentao' }">
-                <h2>📋 Zentao Projects & Tasks</h2>
-                <p>
-                    <span class="status-indicator" :class="zentaoStatus ? 'online' : 'offline'"></span>
-                    {{ zentaoStatus ? 'Connected' : 'Disconnected' }}
-                </p>
-
-                <div class="tabs" style="margin-top: 20px;">
-                    <button class="tab-button" :class="{ active: zentaoTab === 'projects' }" @click="loadZentaoData('projects')">
-                        Projects
-                    </button>
-                    <button class="tab-button" :class="{ active: zentaoTab === 'tasks' }" @click="loadZentaoData('tasks')">
-                        Tasks
-                    </button>
-                    <button class="tab-button" :class="{ active: zentaoTab === 'bugs' }" @click="loadZentaoData('bugs')">
-                        Bugs
-                    </button>
+            <!-- Center - Chat Area -->
+            <div class="chat-main">
+                <div class="chat-header">
+                    <span v-if="currentChannel">{{ currentChannel.isPrivate ? '🔒' : '#' }} {{ currentChannel.name }}</span>
+                    <span v-else>Select a channel</span>
                 </div>
-
-                <div v-if="zentaoLoading" class="loading">Loading...</div>
-                <div v-if="zentaoError" class="error">{{ zentaoError }}</div>
-
-                <div v-if="zentaoData && !zentaoLoading" style="margin-top: 20px;">
-                    <div v-if="Array.isArray(zentaoData)">
-                        <div v-for="(item, index) in zentaoData" :key="index" class="list-item">
-                            <h3>{{ item.name || item.title || 'Item ' + (index + 1) }}</h3>
-                            <p>{{ item.description || item.status || 'No description available' }}</p>
+                <div class="messages-area" ref="messagesArea">
+                    <div v-if="!currentChannel" style="text-align: center; color: #999; margin-top: 50px;">
+                        Select a channel to start chatting
+                    </div>
+                    <div v-else>
+                        <div v-for="message in messages" :key="message.id" class="message">
+                            <div class="message-header">
+                                <span class="message-author" :class="{ ai: message.type === 'AI' }">
+                                    {{ message.username }}
+                                </span>
+                                <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+                            </div>
+                            <div class="message-content">{{ message.content }}</div>
                         </div>
                     </div>
-                    <div v-else class="response-box">
-                        <pre>{{ JSON.stringify(zentaoData, null, 2) }}</pre>
+                </div>
+                <div class="message-input-area" v-if="currentChannel">
+                    <div class="message-input-container">
+                        <textarea 
+                            class="message-input" 
+                            v-model="messageText"
+                            @keydown.enter.prevent="sendMessage"
+                            placeholder="Type a message... Use @eking to mention AI, #channelname to create a channel"
+                        ></textarea>
+                        <button class="send-btn" @click="sendMessage" :disabled="!messageText.trim() || sending">
+                            {{ sending ? '...' : 'Send' }}
+                        </button>
+                    </div>
+                    <div class="input-hint">
+                        💡 Tip: Type #channelname to create a new channel, @eking to call AI assistant
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar - Users -->
+            <div class="users-sidebar">
+                <div class="users-header">Online Users ({{ users.length }})</div>
+                <div class="users-list">
+                    <div v-for="user in users" :key="user.id" class="user-item">
+                        <span class="user-status"></span>
+                        <span class="user-name">{{ user.nickname }}</span>
                     </div>
                 </div>
             </div>
@@ -296,92 +458,176 @@
         createApp({
             data() {
                 return {
-                    activeTab: 'ollama',
-                    zentaoTab: 'projects',
-                    ollamaStatus: false,
-                    zentaoStatus: false,
-                    prompt: '',
-                    selectedModel: '',
-                    models: [],
-                    response: '',
-                    loading: false,
-                    error: '',
-                    zentaoData: null,
-                    zentaoLoading: false,
-                    zentaoError: ''
+                    nickname: '',
+                    currentUser: null,
+                    loggingIn: false,
+                    loginError: '',
+                    channels: [],
+                    currentChannel: null,
+                    messages: [],
+                    messageText: '',
+                    users: [],
+                    sending: false,
+                    pollInterval: null
                 };
             },
             mounted() {
-                this.checkStatus();
-                this.loadModels();
+                // Start polling for updates
+                this.startPolling();
+            },
+            beforeUnmount() {
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                }
             },
             methods: {
-                async checkStatus() {
+                async login() {
+                    if (!this.nickname.trim()) return;
+                    
+                    this.loggingIn = true;
+                    this.loginError = '';
+                    
                     try {
-                        const ollamaResponse = await axios.get('/api/ollama/status');
-                        this.ollamaStatus = ollamaResponse.data.success;
-                    } catch (error) {
-                        this.ollamaStatus = false;
-                    }
-
-                    try {
-                        const zentaoResponse = await axios.get('/api/zentao/status');
-                        this.zentaoStatus = zentaoResponse.data.success;
-                    } catch (error) {
-                        this.zentaoStatus = false;
-                    }
-                },
-                async loadModels() {
-                    try {
-                        const response = await axios.get('/api/ollama/models');
-                        if (response.data.success && response.data.data.models) {
-                            this.models = response.data.data.models.map(m => m.name);
-                        }
-                    } catch (error) {
-                        console.error('Failed to load models:', error);
-                    }
-                },
-                async generateResponse() {
-                    this.loading = true;
-                    this.error = '';
-                    this.response = '';
-
-                    try {
-                        const response = await axios.post('/api/ollama/generate', {
-                            prompt: this.prompt,
-                            model: this.selectedModel || undefined,
-                            stream: false
+                        const response = await axios.post('/api/chat/login', {
+                            nickname: this.nickname.trim()
                         });
-
+                        
                         if (response.data.success) {
-                            this.response = response.data.data.response;
+                            this.currentUser = response.data.data.user;
+                            await this.loadChannels();
+                            await this.loadUsers();
+                            
+                            // Select private channel by default
+                            const privateChannel = this.channels.find(c => c.isPrivate);
+                            if (privateChannel) {
+                                await this.selectChannel(privateChannel);
+                            }
                         } else {
-                            this.error = response.data.message;
+                            this.loginError = response.data.message;
                         }
                     } catch (error) {
-                        this.error = error.response?.data?.message || 'Failed to generate response';
+                        this.loginError = error.response?.data?.message || 'Failed to login';
                     } finally {
-                        this.loading = false;
+                        this.loggingIn = false;
                     }
                 },
-                async loadZentaoData(type) {
-                    this.zentaoTab = type;
-                    this.zentaoLoading = true;
-                    this.zentaoError = '';
-                    this.zentaoData = null;
-
+                
+                async loadChannels() {
                     try {
-                        const response = await axios.get(`/api/zentao/${type}`);
+                        const response = await axios.get('/api/chat/channels', {
+                            params: { userId: this.currentUser.id }
+                        });
+                        
                         if (response.data.success) {
-                            this.zentaoData = response.data.data;
-                        } else {
-                            this.zentaoError = response.data.message;
+                            // Sort channels with private channel first
+                            this.channels = response.data.data.sort((a, b) => {
+                                if (a.isPrivate && !b.isPrivate) return -1;
+                                if (!a.isPrivate && b.isPrivate) return 1;
+                                return 0;
+                            });
                         }
                     } catch (error) {
-                        this.zentaoError = error.response?.data?.message || `Failed to load ${type}`;
-                    } finally {
-                        this.zentaoLoading = false;
+                        console.error('Failed to load channels:', error);
                     }
+                },
+                
+                async loadUsers() {
+                    try {
+                        const response = await axios.get('/api/chat/users');
+                        if (response.data.success) {
+                            this.users = response.data.data;
+                        }
+                    } catch (error) {
+                        console.error('Failed to load users:', error);
+                    }
+                },
+                
+                async selectChannel(channel) {
+                    this.currentChannel = channel;
+                    await this.loadMessages();
+                },
+                
+                async loadMessages() {
+                    if (!this.currentChannel) return;
+                    
+                    try {
+                        const response = await axios.get(`/api/chat/channels/${this.currentChannel.id}/messages`);
+                        if (response.data.success) {
+                            this.messages = response.data.data;
+                            this.$nextTick(() => {
+                                this.scrollToBottom();
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Failed to load messages:', error);
+                    }
+                },
+                
+                async sendMessage() {
+                    if (!this.messageText.trim() || !this.currentChannel || this.sending) return;
+                    
+                    this.sending = true;
+                    const content = this.messageText.trim();
+                    this.messageText = '';
+                    
+                    try {
+                        const response = await axios.post('/api/chat/messages', {
+                            channelId: this.currentChannel.id,
+                            userId: this.currentUser.id,
+                            content: content
+                        });
+                        
+                        if (response.data.success) {
+                            const result = response.data.data;
+                            
+                            // Check if a new channel was created
+                            if (result.type === 'channel_created') {
+                                await this.loadChannels();
+                                await this.selectChannel(result.channel);
+                            } else {
+                                // Add the new message to the list
+                                this.messages.push(result);
+                                this.$nextTick(() => {
+                                    this.scrollToBottom();
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Failed to send message:', error);
+                        this.messageText = content; // Restore message on error
+                    } finally {
+                        this.sending = false;
+                    }
+                },
+                
+                startPolling() {
+                    // Poll for new messages and users every 2 seconds
+                    // Only poll if not already polling
+                    if (this.pollInterval) return;
+                    
+                    this.pollInterval = setInterval(async () => {
+                        if (this.currentUser && this.currentChannel) {
+                            await this.loadMessages();
+                        }
+                        if (this.currentUser) {
+                            await this.loadUsers();
+                        }
+                    }, 2000);
+                },
+                
+                scrollToBottom() {
+                    if (this.$refs.messagesArea) {
+                        this.$refs.messagesArea.scrollTop = this.$refs.messagesArea.scrollHeight;
+                    }
+                },
+                
+                formatTime(timestamp) {
+                    if (!timestamp) return '';
+                    const date = new Date(timestamp);
+                    return date.toLocaleTimeString('en-US', { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
                 }
             }
         }).mount('#app');

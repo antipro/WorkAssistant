@@ -15,6 +15,7 @@ The application uses Javalin as a lightweight web server and features a single-p
 - ✅ **Java 17 Maven Project** - Modern Java development with Maven build system
 - ✅ **Javalin Web Server** - Fast and lightweight REST API server
 - ✅ **Vue.js Single Page Application** - Modern, responsive UI
+- ✅ **Chat Application** - Real-time chat with channels and AI integration
 - ✅ **Ollama Integration** - Wrap Ollama REST API with convenient endpoints
 - ✅ **Zentao Integration** - Wrap Zentao REST API for project management
 - ✅ **Configurable Properties** - Easy configuration via properties file
@@ -27,10 +28,12 @@ The application uses Javalin as a lightweight web server and features a single-p
 WorkAssistant
 ├── Backend (Javalin + Java 17)
 │   ├── REST API Endpoints
+│   ├── Chat Service (Users, Channels, Messages)
 │   ├── Ollama Service Wrapper
 │   └── Zentao Service Wrapper
 └── Frontend (Vue.js SPA)
-    ├── AI Chat Interface
+    ├── Chat Interface (Login, Channels, Messages, Users)
+    ├── AI Chat Integration (@eking mentions)
     └── Project Management Dashboard
 ```
 
@@ -95,10 +98,32 @@ The application will start on port 8080 (or the port specified in your configura
 
 Access the web interface at: `http://localhost:8080`
 
+### Chat Application Features
+
+The default interface is now a chat application with:
+- **Simple Login**: Enter nickname (no password required)
+- **Channels**: Left sidebar shows available channels
+- **Chat Area**: Center panel for messages
+- **Users**: Right sidebar shows online users
+- **AI Integration**: Private AI channel for each user, or mention `@eking` in any channel
+- **Create Channels**: Type `#channelname` to create a new channel
+
+For detailed chat documentation, see [CHAT.md](CHAT.md).
+
 ## API Endpoints
 
 ### Health Check
 - `GET /api/health` - Check application status
+
+### Chat Endpoints
+- `POST /api/chat/login` - Login with nickname (no password required)
+- `GET /api/chat/users` - Get online users
+- `GET /api/chat/channels` - Get channels for a user
+- `POST /api/chat/channels` - Create a new channel
+- `GET /api/chat/channels/{id}/messages` - Get messages from a channel
+- `POST /api/chat/messages` - Send a message
+  - Special syntax: `#channelname` to create a channel
+  - Special syntax: `@eking` to call AI assistant
 
 ### Ollama Endpoints
 - `POST /api/ollama/generate` - Generate AI completion
