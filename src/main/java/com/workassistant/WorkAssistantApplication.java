@@ -1,8 +1,10 @@
 package com.workassistant;
 
 import com.workassistant.config.AppConfig;
+import com.workassistant.controller.ChatController;
 import com.workassistant.controller.OllamaController;
 import com.workassistant.controller.ZentaoController;
+import com.workassistant.service.ChatService;
 import com.workassistant.service.OllamaService;
 import com.workassistant.service.ZentaoService;
 import io.javalin.Javalin;
@@ -22,10 +24,12 @@ public class WorkAssistantApplication {
         // Initialize services
         OllamaService ollamaService = new OllamaService();
         ZentaoService zentaoService = new ZentaoService();
+        ChatService chatService = ChatService.getInstance();
         
         // Initialize controllers
         OllamaController ollamaController = new OllamaController(ollamaService);
         ZentaoController zentaoController = new ZentaoController(zentaoService);
+        ChatController chatController = new ChatController(chatService, ollamaService);
 
         // Create and configure Javalin app
         Javalin app = Javalin.create(javalinConfig -> {
@@ -33,7 +37,12 @@ public class WorkAssistantApplication {
             if (config.isCorsEnabled()) {
                 javalinConfig.bundledPlugins.enableCors(cors -> {
                     cors.addRule(it -> {
-                        it.allowHost(config.getCorsOrigins());
+                        String origins = config.getCorsOrigins();
+                        if ("*".equals(origins)) {
+                            it.anyHost();
+                        } else {
+                            it.allowHost(origins);
+                        }
                     });
                 });
             }
@@ -47,14 +56,14 @@ public class WorkAssistantApplication {
         }).start(config.getServerPort());
 
         // Configure routes
-        configureRoutes(app, ollamaController, zentaoController);
+        configureRoutes(app, ollamaController, zentaoController, chatController);
 
         logger.info("WorkAssistant started on port {}", config.getServerPort());
         logger.info("Ollama URL: {}", config.getOllamaUrl());
         logger.info("Zentao URL: {}", config.getZentaoUrl());
     }
 
-    private static void configureRoutes(Javalin app, OllamaController ollamaController, ZentaoController zentaoController) {
+    private static void configureRoutes(Javalin app, OllamaController ollamaController, ZentaoController zentaoController, ChatController chatController) {
         // Health check endpoint
         app.get("/api/health", ctx -> ctx.json(new HealthResponse("OK", "WorkAssistant is running")));
 
@@ -68,6 +77,14 @@ public class WorkAssistantApplication {
         app.get("/api/zentao/tasks", zentaoController::getTasks);
         app.get("/api/zentao/bugs", zentaoController::getBugs);
         app.get("/api/zentao/status", zentaoController::status);
+        
+        // Chat API routes
+        app.post("/api/chat/login", chatController::login);
+        app.get("/api/chat/users", chatController::getUsers);
+        app.get("/api/chat/channels", chatController::getChannels);
+        app.post("/api/chat/channels", chatController::createChannel);
+        app.get("/api/chat/channels/{channelId}/messages", chatController::getMessages);
+        app.post("/api/chat/messages", chatController::sendMessage);
     }
 
     // Simple health check response class

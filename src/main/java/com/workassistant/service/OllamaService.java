@@ -116,4 +116,17 @@ public class OllamaService {
             return false;
         }
     }
+
+    /**
+     * Generate a simple text response (convenience method for chat)
+     */
+    public String generateSimple(String prompt) {
+        try {
+            OllamaResponse response = generate(prompt);
+            return response.getResponse();
+        } catch (IOException e) {
+            logger.error("Error generating simple response", e);
+            return "Sorry, I'm having trouble connecting to the AI service right now.";
+        }
+    }
 }
