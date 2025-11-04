@@ -25,7 +25,7 @@ public class ChatService {
         channelMessages.put("general", new ArrayList<>());
     }
     
-    public static ChatService getInstance() {
+    public static synchronized ChatService getInstance() {
         if (instance == null) {
             instance = new ChatService();
         }

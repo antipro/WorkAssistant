@@ -602,6 +602,9 @@
                 
                 startPolling() {
                     // Poll for new messages and users every 2 seconds
+                    // Only poll if not already polling
+                    if (this.pollInterval) return;
+                    
                     this.pollInterval = setInterval(async () => {
                         if (this.currentUser && this.currentChannel) {
                             await this.loadMessages();

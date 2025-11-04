@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Controller for chat operations
@@ -21,10 +23,12 @@ public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
     private final ChatService chatService;
     private final OllamaService ollamaService;
+    private final ExecutorService aiExecutor;
 
     public ChatController(ChatService chatService, OllamaService ollamaService) {
         this.chatService = chatService;
         this.ollamaService = ollamaService;
+        this.aiExecutor = Executors.newFixedThreadPool(5);
     }
 
     public void login(Context ctx) {
@@ -169,8 +173,8 @@ public class ChatController {
     }
 
     private void handleAIRequest(String channelId, String content, Message userMessage) {
-        // Process AI request in a separate thread to not block the response
-        new Thread(() -> {
+        // Process AI request using thread pool
+        aiExecutor.submit(() -> {
             try {
                 // Extract the prompt by removing @eking mention
                 String prompt = content.replace("@eking", "").trim();
@@ -190,6 +194,6 @@ public class ChatController {
                 logger.error("Error generating AI response", e);
                 chatService.sendAIMessage(channelId, "Sorry, I encountered an error while processing your request.");
             }
-        }).start();
+        });
     }
 }
