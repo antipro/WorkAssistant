@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkAssistant</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 15px;
+            background: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tab-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-indicator.online {
+            background: #4caf50;
+        }
+
+        .status-indicator.offline {
+            background: #f44336;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .response-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .response-box pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .error {
+            color: #f44336;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .list-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .list-item h3 {
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .list-item p {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🤖 WorkAssistant</h1>
+            <p>Your AI-powered work companion integrated with Ollama and Zentao</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-button" :class="{ active: activeTab === 'ollama' }" @click="activeTab = 'ollama'">
+                Ollama AI
+            </button>
+            <button class="tab-button" :class="{ active: activeTab === 'zentao' }" @click="activeTab = 'zentao'">
+                Zentao Projects
+            </button>
+        </div>
+
+        <div class="content">
+            <!-- Ollama Section -->
+            <div class="section" :class="{ active: activeTab === 'ollama' }">
+                <h2>💬 Chat with Ollama AI</h2>
+                <p>
+                    <span class="status-indicator" :class="ollamaStatus ? 'online' : 'offline'"></span>
+                    {{ ollamaStatus ? 'Connected' : 'Disconnected' }}
+                </p>
+
+                <div class="form-group">
+                    <label for="model-select">Select Model:</label>
+                    <select id="model-select" v-model="selectedModel">
+                        <option value="">Default Model</option>
+                        <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="prompt">Enter your prompt:</label>
+                    <textarea id="prompt" v-model="prompt" placeholder="Type your question or prompt here..."></textarea>
+                </div>
+
+                <button @click="generateResponse" :disabled="loading || !prompt">
+                    {{ loading ? 'Generating...' : 'Generate' }}
+                </button>
+
+                <div v-if="error" class="error">{{ error }}</div>
+
+                <div v-if="response" class="response-box">
+                    <h3>Response:</h3>
+                    <pre>{{ response }}</pre>
+                </div>
+            </div>
+
+            <!-- Zentao Section -->
+            <div class="section" :class="{ active: activeTab === 'zentao' }">
+                <h2>📋 Zentao Projects & Tasks</h2>
+                <p>
+                    <span class="status-indicator" :class="zentaoStatus ? 'online' : 'offline'"></span>
+                    {{ zentaoStatus ? 'Connected' : 'Disconnected' }}
+                </p>
+
+                <div class="tabs" style="margin-top: 20px;">
+                    <button class="tab-button" :class="{ active: zentaoTab === 'projects' }" @click="loadZentaoData('projects')">
+                        Projects
+                    </button>
+                    <button class="tab-button" :class="{ active: zentaoTab === 'tasks' }" @click="loadZentaoData('tasks')">
+                        Tasks
+                    </button>
+                    <button class="tab-button" :class="{ active: zentaoTab === 'bugs' }" @click="loadZentaoData('bugs')">
+                        Bugs
+                    </button>
+                </div>
+
+                <div v-if="zentaoLoading" class="loading">Loading...</div>
+                <div v-if="zentaoError" class="error">{{ zentaoError }}</div>
+
+                <div v-if="zentaoData && !zentaoLoading" style="margin-top: 20px;">
+                    <div v-if="Array.isArray(zentaoData)">
+                        <div v-for="(item, index) in zentaoData" :key="index" class="list-item">
+                            <h3>{{ item.name || item.title || 'Item ' + (index + 1) }}</h3>
+                            <p>{{ item.description || item.status || 'No description available' }}</p>
+                        </div>
+                    </div>
+                    <div v-else class="response-box">
+                        <pre>{{ JSON.stringify(zentaoData, null, 2) }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    activeTab: 'ollama',
+                    zentaoTab: 'projects',
+                    ollamaStatus: false,
+                    zentaoStatus: false,
+                    prompt: '',
+                    selectedModel: '',
+                    models: [],
+                    response: '',
+                    loading: false,
+                    error: '',
+                    zentaoData: null,
+                    zentaoLoading: false,
+                    zentaoError: ''
+                };
+            },
+            mounted() {
+                this.checkStatus();
+                this.loadModels();
+            },
+            methods: {
+                async checkStatus() {
+                    try {
+                        const ollamaResponse = await axios.get('/api/ollama/status');
+                        this.ollamaStatus = ollamaResponse.data.success;
+                    } catch (error) {
+                        this.ollamaStatus = false;
+                    }
+
+                    try {
+                        const zentaoResponse = await axios.get('/api/zentao/status');
+                        this.zentaoStatus = zentaoResponse.data.success;
+                    } catch (error) {
+                        this.zentaoStatus = false;
+                    }
+                },
+                async loadModels() {
+                    try {
+                        const response = await axios.get('/api/ollama/models');
+                        if (response.data.success && response.data.data.models) {
+                            this.models = response.data.data.models.map(m => m.name);
+                        }
+                    } catch (error) {
+                        console.error('Failed to load models:', error);
+                    }
+                },
+                async generateResponse() {
+                    this.loading = true;
+                    this.error = '';
+                    this.response = '';
+
+                    try {
+                        const response = await axios.post('/api/ollama/generate', {
+                            prompt: this.prompt,
+                            model: this.selectedModel || undefined,
+                            stream: false
+                        });
+
+                        if (response.data.success) {
+                            this.response = response.data.data.response;
+                        } else {
+                            this.error = response.data.message;
+                        }
+                    } catch (error) {
+                        this.error = error.response?.data?.message || 'Failed to generate response';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async loadZentaoData(type) {
+                    this.zentaoTab = type;
+                    this.zentaoLoading = true;
+                    this.zentaoError = '';
+                    this.zentaoData = null;
+
+                    try {
+                        const response = await axios.get(`/api/zentao/${type}`);
+                        if (response.data.success) {
+                            this.zentaoData = response.data.data;
+                        } else {
+                            this.zentaoError = response.data.message;
+                        }
+                    } catch (error) {
+                        this.zentaoError = error.response?.data?.message || `Failed to load ${type}`;
+                    } finally {
+                        this.zentaoLoading = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
