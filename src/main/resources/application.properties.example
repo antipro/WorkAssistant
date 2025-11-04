@@ -1,0 +1,18 @@
+# Server Configuration
+server.port=8080
+
+# Zentao Configuration
+# Replace with your Zentao instance URL
+zentao.url=http://your-zentao-server/zentao
+zentao.account=your-username
+zentao.password=your-password
+
+# Ollama Configuration
+# Replace with your Ollama server URL
+ollama.url=http://localhost:11434
+ollama.model=llama2
+ollama.timeout=120000
+
+# CORS Configuration
+cors.enabled=true
+cors.origins=*

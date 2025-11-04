@@ -1,0 +1,73 @@
+package com.workassistant.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workassistant.model.ApiResponse;
+import com.workassistant.service.ZentaoService;
+import io.javalin.http.Context;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Controller for Zentao API endpoints
+ */
+public class ZentaoController {
+    private static final Logger logger = LoggerFactory.getLogger(ZentaoController.class);
+    private final ZentaoService zentaoService;
+    private final ObjectMapper objectMapper;
+
+    public ZentaoController(ZentaoService zentaoService) {
+        this.zentaoService = zentaoService;
+        this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * GET /api/zentao/projects - Get all projects
+     */
+    public void getProjects(Context ctx) {
+        try {
+            String projects = zentaoService.getProjects();
+            ctx.json(ApiResponse.success(objectMapper.readTree(projects)));
+        } catch (Exception e) {
+            logger.error("Error fetching projects", e);
+            ctx.status(500).json(ApiResponse.error("Failed to fetch projects: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/zentao/tasks - Get all tasks
+     */
+    public void getTasks(Context ctx) {
+        try {
+            String tasks = zentaoService.getTasks();
+            ctx.json(ApiResponse.success(objectMapper.readTree(tasks)));
+        } catch (Exception e) {
+            logger.error("Error fetching tasks", e);
+            ctx.status(500).json(ApiResponse.error("Failed to fetch tasks: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/zentao/bugs - Get all bugs
+     */
+    public void getBugs(Context ctx) {
+        try {
+            String bugs = zentaoService.getBugs();
+            ctx.json(ApiResponse.success(objectMapper.readTree(bugs)));
+        } catch (Exception e) {
+            logger.error("Error fetching bugs", e);
+            ctx.status(500).json(ApiResponse.error("Failed to fetch bugs: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/zentao/status - Check Zentao service status
+     */
+    public void status(Context ctx) {
+        boolean available = zentaoService.isAvailable();
+        if (available) {
+            ctx.json(ApiResponse.success("Zentao service is available"));
+        } else {
+            ctx.status(503).json(ApiResponse.error("Zentao service is not available"));
+        }
+    }
+}
