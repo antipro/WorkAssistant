@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
  */
 public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
+    private static final int MIN_KEYWORD_LENGTH = 3;
+    
     private final ChatService chatService;
     private final OllamaService ollamaService;
     private final ElasticsearchService elasticsearchService;
@@ -282,7 +284,7 @@ public class ChatController {
             // Add some basic keywords from title
             String[] titleWords = title.split("\\s+");
             for (String word : titleWords) {
-                if (word.length() > 3) {
+                if (word.length() > MIN_KEYWORD_LENGTH) {
                     keywords.add(word.toLowerCase().replaceAll("[^a-z0-9]", ""));
                 }
             }
