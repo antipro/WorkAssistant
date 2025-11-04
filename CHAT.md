@@ -97,6 +97,22 @@ Response: { "data": { "id": "...", "content": "@eking What is 2+2?" } }
 # AI response comes asynchronously as a new message
 ```
 
+#### Create Summary
+```
+POST /api/chat/messages
+Body: { "channelId": "...", "userId": "...", "content": "@eking summarize this discussion" }
+Response: { "data": { "id": "...", "content": "@eking summarize this discussion" } }
+# AI creates a summary and stores it in Elasticsearch
+```
+
+#### Search Summaries
+```
+POST /api/chat/messages
+Body: { "channelId": "...", "userId": "...", "content": "@eking search project architecture" }
+Response: { "data": { "id": "...", "content": "@eking search project architecture" } }
+# AI searches Elasticsearch and returns matching summaries in markdown format
+```
+
 ## Architecture
 
 ### Backend (Java)
@@ -184,6 +200,32 @@ POST /api/chat/messages
 // AI responds asynchronously with answer
 ```
 
+### 5. Create Summary
+```javascript
+// Type "@eking summarize our discussion about testing strategies" and press Enter
+POST /api/chat/messages
+{ 
+  "channelId": "general",
+  "userId": "...",
+  "content": "@eking summarize our discussion about testing strategies"
+}
+// AI generates a structured summary and stores it in Elasticsearch
+// Summary is indexed with title, content (markdown), keywords, and metadata
+```
+
+### 6. Search Summaries
+```javascript
+// Type "@eking search testing strategies" and press Enter
+POST /api/chat/messages
+{ 
+  "channelId": "general",
+  "userId": "...",
+  "content": "@eking search testing strategies"
+}
+// AI searches Elasticsearch for matching summaries
+// Returns formatted results with title, content preview, keywords, and timestamp
+```
+
 ## Technical Details
 
 ### State Management
@@ -203,6 +245,24 @@ POST /api/chat/messages
 - Error handling with user-friendly messages
 - Requires Ollama service to be running
 
+### Elasticsearch Integration
+- **Summary Storage**: AI-generated summaries stored with full-text indexing
+- **Multi-field Search**: Searches across title, content, and keywords
+- **IK Analyzer**: Chinese text analysis support (if IK plugin is installed)
+- **Relevance Ranking**: Results ordered by search relevance
+- **Field Boosting**: Title (3x) and keywords (2x) weighted higher than content
+- **Time-based Retrieval**: Can retrieve summaries by time for conversation history
+- **Channel Filtering**: Can filter summaries by channel ID
+
+#### Search Keywords
+The AI detects search intent when users mention:
+- English: "search", "find", "look for"
+- Chinese: "查找", "搜索"
+
+#### Summary Keywords
+The AI creates summaries when users mention:
+- "summary", "summarize", "summarise"
+
 ### Security Considerations
 - No authentication (demo/prototype only)
 - CORS enabled for development
@@ -220,7 +280,7 @@ POST /api/chat/messages
 7. **Channel Permissions**: Add admin/moderator roles
 8. **Direct Messages**: Add 1-on-1 private messaging
 9. **Emoji Support**: Add emoji picker and reactions
-10. **Search**: Add message and channel search
+10. **Advanced Search**: Add filters for date range, channel, and user in search results
 
 ## Known Issues
 
