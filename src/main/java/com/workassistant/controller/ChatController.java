@@ -351,6 +351,7 @@ public class ChatController {
     private String extractSearchKeywords(String prompt) {
         String cleaned = prompt.toLowerCase()
             .replaceAll("\\b(search|find|look for|about|查找|搜索)\\b", "")
+            .replaceAll("\\s+", " ")
             .trim();
         return cleaned;
     }
@@ -361,8 +362,8 @@ public class ChatController {
     private String formatSearchResults(String query, List<SummaryDocument> results) {
         StringBuilder sb = new StringBuilder();
         sb.append("🔍 **Search Results for: ").append(query).append("**\n\n");
-        sb.append("Found ").append(results.size()).append(" matching summar");
-        sb.append(results.size() == 1 ? "y" : "ies").append(":\n\n");
+        sb.append("Found ").append(results.size()).append(" matching ");
+        sb.append(results.size() == 1 ? "summary" : "summaries").append(":\n\n");
         sb.append("---\n\n");
         
         int count = 1;
