@@ -18,6 +18,8 @@ The application uses Javalin as a lightweight web server and features a single-p
 - ✅ **Chat Application** - Real-time chat with channels and AI integration
 - ✅ **Ollama Integration** - Wrap Ollama REST API with convenient endpoints
 - ✅ **Zentao Integration** - Wrap Zentao REST API for project management
+- ✅ **Elasticsearch Integration** - Store AI summaries with IK analyzer support
+- ✅ **AI Summary Jobs** - Create structured summaries stored in Elasticsearch
 - ✅ **Configurable Properties** - Easy configuration via properties file
 - ✅ **CORS Support** - Cross-origin resource sharing enabled
 - ✅ **Unit Tests** - Comprehensive test coverage
@@ -30,10 +32,12 @@ WorkAssistant
 │   ├── REST API Endpoints
 │   ├── Chat Service (Users, Channels, Messages)
 │   ├── Ollama Service Wrapper
-│   └── Zentao Service Wrapper
+│   ├── Zentao Service Wrapper
+│   └── Elasticsearch Service (Summary Storage)
 └── Frontend (Vue.js SPA)
     ├── Chat Interface (Login, Channels, Messages, Users)
     ├── AI Chat Integration (@eking mentions)
+    ├── AI Summary Jobs (Elasticsearch indexing)
     └── Project Management Dashboard
 ```
 
@@ -43,6 +47,7 @@ WorkAssistant
 - Maven 3.6+
 - Ollama service running (optional, for AI features)
 - Zentao instance (optional, for project management features)
+- Elasticsearch 8.x (optional, for AI summary storage with IK analyzer plugin)
 
 ## Installation
 
@@ -75,6 +80,11 @@ WorkAssistant
    # CORS Configuration
    cors.enabled=true
    cors.origins=*
+
+   # Elasticsearch Configuration
+   elasticsearch.host=localhost
+   elasticsearch.port=9200
+   elasticsearch.index=work_assistant_summaries
    ```
 
 4. **Build the project**
@@ -106,7 +116,27 @@ The default interface is now a chat application with:
 - **Chat Area**: Center panel for messages
 - **Users**: Right sidebar shows online users
 - **AI Integration**: Private AI channel for each user, or mention `@eking` in any channel
+- **AI Summaries**: Ask `@eking` to create a summary and it will be stored in Elasticsearch
 - **Create Channels**: Type `#channelname` to create a new channel
+
+#### AI Summary Feature
+
+When you mention `@eking` with keywords like "summary", "summarize", or "summarise", the AI will:
+1. Generate a structured summary in markdown format
+2. Extract title, content, and keywords
+3. Store the summary in Elasticsearch with IK analyzer for Chinese text support
+4. Confirm successful storage with a formatted response
+
+Example:
+```
+@eking please summarize our discussion about project architecture
+```
+
+The summary will be indexed in Elasticsearch with:
+- **Title**: Extracted from the AI response
+- **Content**: Markdown-formatted summary
+- **Keywords**: Comma-separated keywords
+- **Metadata**: Channel ID, User ID, and timestamp
 
 For detailed chat documentation, see [CHAT.md](CHAT.md).
 
@@ -124,6 +154,7 @@ For detailed chat documentation, see [CHAT.md](CHAT.md).
 - `POST /api/chat/messages` - Send a message
   - Special syntax: `#channelname` to create a channel
   - Special syntax: `@eking` to call AI assistant
+  - Special syntax: `@eking summary/summarize` to create AI summary stored in Elasticsearch
 
 ### Ollama Endpoints
 - `POST /api/ollama/generate` - Generate AI completion
@@ -142,6 +173,19 @@ For detailed chat documentation, see [CHAT.md](CHAT.md).
 - `GET /api/zentao/tasks` - Get all tasks
 - `GET /api/zentao/bugs` - Get all bugs
 - `GET /api/zentao/status` - Check Zentao service status
+
+### Elasticsearch Features
+- **Automatic Index Creation**: Creates index template with IK analyzer on startup
+- **Summary Storage**: Stores AI-generated summaries with title, content (markdown), and keywords
+- **IK Analyzer Support**: Uses `ik_max_word` for indexing and `ik_smart` for searching (Chinese text support)
+- **Fallback**: If IK analyzer is not available, falls back to standard analyzer
+- **Index Structure**:
+  - `title` (text with IK analyzer)
+  - `content` (text with IK analyzer, markdown format)
+  - `keywords` (text with IK analyzer)
+  - `timestamp` (date)
+  - `channelId` (keyword)
+  - `userId` (keyword)
 
 ## Development
 
@@ -189,6 +233,21 @@ mvn clean package    # Build JAR
 - `ollama.model` - Default model to use (default: llama2)
 - `ollama.timeout` - Request timeout in milliseconds (default: 120000)
 
+### Elasticsearch Configuration
+- `elasticsearch.host` - Elasticsearch host (default: localhost)
+- `elasticsearch.port` - Elasticsearch port (default: 9200)
+- `elasticsearch.index` - Index name for summaries (default: work_assistant_summaries)
+
+**Note**: Elasticsearch is optional. If not available, the application will continue to function but summary storage will be disabled.
+
+**IK Analyzer Plugin**: For Chinese text analysis, install the IK analyzer plugin:
+```bash
+# For Elasticsearch 8.x
+./bin/elasticsearch-plugin install https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v8.11.1/elasticsearch-analysis-ik-8.11.1.zip
+```
+If IK analyzer is not installed, the system will fall back to the standard analyzer.
+
+
 ### CORS Configuration
 - `cors.enabled` - Enable/disable CORS (default: true)
 - `cors.origins` - Allowed origins (default: *)
@@ -199,6 +258,8 @@ mvn clean package    # Build JAR
 - **Maven** - Build and dependency management
 - **Javalin 6.1.3** - Web framework
 - **Vue.js 3** - Frontend framework
+- **Elasticsearch 8.11.1** - Search and analytics engine for summary storage
+- **IK Analyzer** - Chinese text analyzer plugin for Elasticsearch
 - **OkHttp 4.12.0** - HTTP client for API calls
 - **Jackson 2.16.1** - JSON processing
 - **SLF4J 2.0.9** - Logging framework
