@@ -16,3 +16,8 @@ ollama.timeout=120000
 # CORS Configuration
 cors.enabled=true
 cors.origins=*
+
+# Elasticsearch Configuration
+elasticsearch.host=localhost
+elasticsearch.port=9200
+elasticsearch.index=work_assistant_summaries
