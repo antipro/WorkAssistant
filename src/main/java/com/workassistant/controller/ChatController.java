@@ -211,7 +211,9 @@ public class ChatController {
                 } else {
                     // Regular chat response
                     String aiResponse = ollamaService.generateSimple(prompt);
-                    chatService.sendAIMessage(channelId, aiResponse);
+                    // Quote the user's input in the response
+                    String formattedResponse = formatAIResponseWithQuote(content, aiResponse);
+                    chatService.sendAIMessage(channelId, formattedResponse);
                     logger.info("AI response sent to channel: {}", channelId);
                 }
             } catch (Exception e) {
@@ -223,6 +225,9 @@ public class ChatController {
     
     private void handleSummaryRequest(String channelId, String prompt, Message userMessage) {
         try {
+            // Get original user message content
+            String originalUserMessage = userMessage.getContent();
+            
             // Create a summary prompt
             String summaryPrompt = "Please create a structured summary in markdown format with the following sections:\n" +
                 "1. Title (one line)\n" +
@@ -243,15 +248,20 @@ public class ChatController {
                         "**Title:** " + summaryDoc.getTitle() + "\n\n" +
                         "**Content:**\n" + summaryDoc.getContent() + "\n\n" +
                         "**Keywords:** " + String.join(", ", summaryDoc.getKeywords());
-                    chatService.sendAIMessage(channelId, successMsg);
+                    String formattedResponse = formatAIResponseWithQuote(originalUserMessage, successMsg);
+                    chatService.sendAIMessage(channelId, formattedResponse);
                     logger.info("Summary indexed in Elasticsearch: {}", summaryDoc.getId());
                 } catch (Exception e) {
                     logger.error("Failed to index summary in Elasticsearch", e);
-                    chatService.sendAIMessage(channelId, "Summary created but failed to store in Elasticsearch:\n\n" + aiResponse);
+                    String errorMsg = "Summary created but failed to store in Elasticsearch:\n\n" + aiResponse;
+                    String formattedResponse = formatAIResponseWithQuote(originalUserMessage, errorMsg);
+                    chatService.sendAIMessage(channelId, formattedResponse);
                 }
             } else {
                 logger.warn("Elasticsearch not available, sending summary without indexing");
-                chatService.sendAIMessage(channelId, "⚠️ Elasticsearch is not available. Summary:\n\n" + aiResponse);
+                String warningMsg = "⚠️ Elasticsearch is not available. Summary:\n\n" + aiResponse;
+                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, warningMsg);
+                chatService.sendAIMessage(channelId, formattedResponse);
             }
         } catch (Exception e) {
             logger.error("Error handling summary request", e);
@@ -307,10 +317,14 @@ public class ChatController {
     
     private void handleSearchRequest(String channelId, String prompt, Message userMessage) {
         try {
+            // Get original user message content
+            String originalUserMessage = userMessage.getContent();
+            
             // Check if Elasticsearch is available
             if (!elasticsearchService.isAvailable()) {
-                chatService.sendAIMessage(channelId, 
-                    "⚠️ Sorry, the search service is not available. Elasticsearch is not connected.");
+                String errorMsg = "⚠️ Sorry, the search service is not available. Elasticsearch is not connected.";
+                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, errorMsg);
+                chatService.sendAIMessage(channelId, formattedResponse);
                 logger.warn("Search request received but Elasticsearch is not available");
                 return;
             }
@@ -319,8 +333,9 @@ public class ChatController {
             String searchQuery = extractSearchKeywords(prompt);
             
             if (searchQuery.isEmpty()) {
-                chatService.sendAIMessage(channelId, 
-                    "Please provide keywords to search. For example: '@eking search project architecture'");
+                String helpMsg = "Please provide keywords to search. For example: '@eking search project architecture'";
+                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, helpMsg);
+                chatService.sendAIMessage(channelId, formattedResponse);
                 return;
             }
             
@@ -331,18 +346,21 @@ public class ChatController {
                 // If no results from ES, try to get AI to help
                 String aiResponse = ollamaService.generateSimple(
                     "User is asking about: " + searchQuery + ". No previous summaries found. Provide a helpful response.");
-                chatService.sendAIMessage(channelId, 
-                    "🔍 No previous summaries found for: **" + searchQuery + "**\n\n" + aiResponse);
+                String noResultsMsg = "🔍 No previous summaries found for: **" + searchQuery + "**\n\n" + aiResponse;
+                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, noResultsMsg);
+                chatService.sendAIMessage(channelId, formattedResponse);
             } else {
                 // Format results in markdown
                 String formattedResults = formatSearchResults(searchQuery, results);
-                chatService.sendAIMessage(channelId, formattedResults);
+                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, formattedResults);
+                chatService.sendAIMessage(channelId, formattedResponse);
                 logger.info("Search results sent for query: {} - {} results", searchQuery, results.size());
             }
         } catch (Exception e) {
             logger.error("Error handling search request", e);
-            chatService.sendAIMessage(channelId, 
-                "Sorry, I encountered an error while searching. Please try again later.");
+            String errorMsg = "Sorry, I encountered an error while searching. Please try again later.";
+            String formattedResponse = formatAIResponseWithQuote(userMessage.getContent(), errorMsg);
+            chatService.sendAIMessage(channelId, formattedResponse);
         }
     }
     
@@ -394,5 +412,12 @@ public class ChatController {
         }
         
         return sb.toString();
+    }
+    
+    /**
+     * Format AI response with quoted user input
+     */
+    private String formatAIResponseWithQuote(String userInput, String aiResponse) {
+        return "> " + userInput + "\n\n" + aiResponse;
     }
 }
