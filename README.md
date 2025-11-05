@@ -18,6 +18,7 @@ The application uses Javalin as a lightweight web server and features a single-p
 - ✅ **Chat Application** - Real-time chat with channels and AI integration
 - ✅ **Ollama Integration** - Wrap Ollama REST API with convenient endpoints
 - ✅ **Zentao Integration** - Wrap Zentao REST API for project management
+- ✅ **Function Calling** - AI can automatically call Zentao functions (get projects, tasks, bugs)
 - ✅ **Elasticsearch Integration** - Store AI summaries with IK analyzer support
 - ✅ **AI Summary Jobs** - Create structured summaries stored in Elasticsearch
 - ✅ **Configurable Properties** - Easy configuration via properties file
@@ -160,6 +161,22 @@ The search feature supports:
 - **Keyword boosting**: Title and keywords are weighted higher in search
 - **IK Analyzer**: For Chinese text analysis (if IK plugin is installed)
 - **Relevance ranking**: Results ordered by relevance
+
+#### AI Function Calling Feature
+
+When you mention `@eking`, the AI assistant has access to Zentao functions and can automatically call them when needed:
+- **get_projects**: Retrieve all projects from Zentao
+- **get_tasks**: Get tasks with optional filters (assignedTo, project, status)
+- **get_bugs**: Get bugs with optional filters (assignedTo, project, status)
+
+Example queries:
+```
+@eking What projects do we have?
+@eking Show me tasks assigned to John with status doing
+@eking List all active bugs in project Alpha
+```
+
+The AI automatically decides when to call these functions based on your question and extracts relevant parameters. For detailed documentation, see [FUNCTION_CALLING.md](FUNCTION_CALLING.md).
 
 For detailed chat documentation, see [CHAT.md](CHAT.md).
 

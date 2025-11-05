@@ -6,13 +6,17 @@ import com.workassistant.model.Message;
 import com.workassistant.model.User;
 import com.workassistant.model.JobType;
 import com.workassistant.model.SummaryDocument;
+import com.workassistant.model.OllamaResponse;
 import com.workassistant.service.ChatService;
 import com.workassistant.service.OllamaService;
 import com.workassistant.service.ElasticsearchService;
+import com.workassistant.service.ZentaoFunctionProvider;
+import com.workassistant.service.ZentaoService;
 import io.javalin.http.Context;
 import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
 import io.javalin.websocket.WsMessageContext;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -39,6 +43,7 @@ public class ChatController {
     
     private final ChatService chatService;
     private final OllamaService ollamaService;
+    private final ZentaoService zentaoService;
     private final ElasticsearchService elasticsearchService;
     private final ExecutorService aiExecutor;
     private final ScheduledExecutorService sessionCleanup;
@@ -50,6 +55,7 @@ public class ChatController {
     public ChatController(ChatService chatService, OllamaService ollamaService) {
         this.chatService = chatService;
         this.ollamaService = ollamaService;
+        this.zentaoService = new ZentaoService();
         this.elasticsearchService = ElasticsearchService.getInstance();
         this.aiExecutor = Executors.newFixedThreadPool(5);
     this.sessionCleanup = Executors.newSingleThreadScheduledExecutor();
@@ -263,14 +269,24 @@ public class ChatController {
                 } else if (isSearchRequest) {
                     handleSearchRequest(channelId, prompt, userMessage);
                 } else {
-                    // Regular chat response
-                    String aiResponse = ollamaService.generateSimple(prompt);
-                    Message aiMessage = chatService.sendAIMessage(channelId, aiResponse);
-                    // Broadcast AI message to all connected clients
-                    if (aiMessage != null) {
-                        broadcastMessage(aiMessage);
+                    // Regular chat response with Zentao function calling support
+                    String zentaoTools = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
+                    OllamaResponse response = ollamaService.generateChatWithTools(prompt, zentaoTools);
+                    String aiResponse = response.getResponse();
+                    
+                    // Check if the response is a function call
+                    if (aiResponse != null && aiResponse.startsWith("FUNCTION_CALL:")) {
+                        // Model wants to call a Zentao function
+                        handleFunctionCall(channelId, aiResponse, prompt);
+                    } else {
+                        // Regular text response
+                        Message aiMessage = chatService.sendAIMessage(channelId, aiResponse);
+                        // Broadcast AI message to all connected clients
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                        logger.info("AI response sent to channel: {}", channelId);
                     }
-                    logger.info("AI response sent to channel: {}", channelId);
                 }
             } catch (Exception e) {
                 logger.error("Error generating AI response", e);
@@ -488,6 +504,103 @@ public class ChatController {
         }
         
         return sb.toString();
+    }
+    
+    /**
+     * Handle function calls from the AI model
+     */
+    private void handleFunctionCall(String channelId, String functionCallResponse, String originalPrompt) {
+        try {
+            logger.info("Handling function call for channel: {}", channelId);
+            
+            // Parse the function call JSON (remove "FUNCTION_CALL:" prefix)
+            String functionCallJson = functionCallResponse.substring("FUNCTION_CALL:".length()).trim();
+            JsonNode toolCalls = objectMapper.readTree(functionCallJson);
+            
+            if (!toolCalls.isArray() || toolCalls.size() == 0) {
+                Message errorMsg = chatService.sendAIMessage(channelId, 
+                    "⚠️ I wanted to call a function but the format was incorrect.");
+                if (errorMsg != null) {
+                    broadcastMessage(errorMsg);
+                }
+                return;
+            }
+            
+            // Process the first tool call (for simplicity)
+            JsonNode toolCall = toolCalls.get(0);
+            JsonNode functionNode = toolCall.get("function");
+            
+            if (functionNode == null) {
+                Message errorMsg = chatService.sendAIMessage(channelId, 
+                    "⚠️ Function call format error: no function node found.");
+                if (errorMsg != null) {
+                    broadcastMessage(errorMsg);
+                }
+                return;
+            }
+            
+            String functionName = functionNode.get("name").asText();
+            JsonNode argumentsNode = functionNode.get("arguments");
+            
+            logger.info("AI wants to call function: {} with args: {}", functionName, argumentsNode);
+            
+            // Execute the appropriate Zentao function
+            String functionResult = executeFunctionCall(functionName, argumentsNode);
+            
+            // Send the function result back to the user
+            Message aiMessage = chatService.sendAIMessage(channelId, 
+                "🔧 **Function Call: " + functionName + "**\n\n" + functionResult);
+            if (aiMessage != null) {
+                broadcastMessage(aiMessage);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error handling function call", e);
+            Message errorMsg = chatService.sendAIMessage(channelId, 
+                "⚠️ Error executing function call: " + e.getMessage());
+            if (errorMsg != null) {
+                broadcastMessage(errorMsg);
+            }
+        }
+    }
+    
+    /**
+     * Execute the Zentao function based on the function name
+     */
+    private String executeFunctionCall(String functionName, JsonNode arguments) {
+        try {
+            switch (functionName) {
+                case "get_projects":
+                    return zentaoService.getProjects();
+                    
+                case "get_tasks":
+                    Map<String, String> taskParams = parseArgumentsToMap(arguments);
+                    return zentaoService.getTasks(taskParams);
+                    
+                case "get_bugs":
+                    Map<String, String> bugParams = parseArgumentsToMap(arguments);
+                    return zentaoService.getBugs(bugParams);
+                    
+                default:
+                    return "⚠️ Unknown function: " + functionName;
+            }
+        } catch (Exception e) {
+            logger.error("Error executing function: {}", functionName, e);
+            return "⚠️ Error executing " + functionName + ": " + e.getMessage();
+        }
+    }
+    
+    /**
+     * Parse function arguments JSON to a Map
+     */
+    private Map<String, String> parseArgumentsToMap(JsonNode arguments) {
+        Map<String, String> params = new HashMap<>();
+        if (arguments != null && arguments.isObject()) {
+            arguments.fields().forEachRemaining(entry -> {
+                params.put(entry.getKey(), entry.getValue().asText());
+            });
+        }
+        return params;
     }
     
     // WebSocket handlers
