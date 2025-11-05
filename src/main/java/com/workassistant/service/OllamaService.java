@@ -242,6 +242,8 @@ public class OllamaService {
      * This method is used after the model has called a tool/function.
      * It sends the function result back to Ollama to get a natural language response.
      * 
+     * Note: Currently processes only the first tool call if multiple are present.
+     * 
      * @param originalPrompt The original user prompt
      * @param toolCalls The tool calls made by the model (as JsonNode)
      * @param functionResult The result from executing the function
@@ -259,6 +261,8 @@ public class OllamaService {
 
     /**
      * Continue chat conversation with function result using specific model.
+     * 
+     * Note: Currently processes only the first tool call if multiple are present.
      * 
      * @param originalPrompt The original user prompt
      * @param model Model name to use
@@ -301,17 +305,15 @@ public class OllamaService {
 
         // Message 3: Tool result message
         // We need to send a message with role "tool" containing the function result
+        // Note: Currently only processing the first tool call for simplicity
         if (toolCalls.isArray() && toolCalls.size() > 0) {
             JsonNode firstToolCall = toolCalls.get(0);
             JsonNode functionNode = firstToolCall.get("function");
             if (functionNode != null) {
-                String functionName = functionNode.get("name").asText();
-                
                 ObjectNode toolMessage = objectMapper.createObjectNode();
                 toolMessage.put("role", "tool");
                 toolMessage.put("content", functionResult);
-                // Some Ollama models may need the function name in the tool message
-                // Add it if available in the tool call structure
+                // Include tool_call_id if available (optional field, depends on Ollama model)
                 if (firstToolCall.has("id")) {
                     toolMessage.put("tool_call_id", firstToolCall.get("id").asText());
                 }
