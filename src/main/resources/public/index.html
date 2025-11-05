@@ -468,17 +468,25 @@
                     messageText: '',
                     users: [],
                     sending: false,
-                    pollInterval: null
+                    pollInterval: null,
+                    websocket: null,
+                    reconnectInterval: null,
+                    pingInterval: null,
+                    isConnected: false
                 };
             },
             mounted() {
-                // Start polling for updates
+                // Start polling for updates (fallback if WebSocket not connected)
                 this.startPolling();
             },
             beforeUnmount() {
                 if (this.pollInterval) {
                     clearInterval(this.pollInterval);
                 }
+                if (this.reconnectInterval) {
+                    clearInterval(this.reconnectInterval);
+                }
+                this.closeWebSocket();
             },
             methods: {
                 async login() {
@@ -497,6 +505,15 @@
                             await this.loadChannels();
                             await this.loadUsers();
                             
+                            // Connect to WebSocket after successful login
+                            this.connectWebSocket();
+                            
+                            // Stop polling since WebSocket will handle updates
+                            if (this.pollInterval) {
+                                clearInterval(this.pollInterval);
+                                this.pollInterval = null;
+                            }
+                            
                             // Select private channel by default
                             const privateChannel = this.channels.find(c => c.isPrivate);
                             if (privateChannel) {
@@ -510,6 +527,104 @@
                     } finally {
                         this.loggingIn = false;
                     }
+                },
+                
+                connectWebSocket() {
+                    if (this.websocket) {
+                        this.websocket.close();
+                    }
+                    
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws/chat?userId=${this.currentUser.id}`;
+                    
+                    this.websocket = new WebSocket(wsUrl);
+                    
+                    this.websocket.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.isConnected = true;
+                        
+                        // Clear reconnect interval if exists
+                        if (this.reconnectInterval) {
+                            clearInterval(this.reconnectInterval);
+                            this.reconnectInterval = null;
+                        }
+                        
+                        // Start ping interval to keep connection alive
+                        this.startPingInterval();
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.handleWebSocketMessage(data);
+                        } catch (error) {
+                            console.error('Error parsing WebSocket message:', error);
+                        }
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                    
+                    this.websocket.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.isConnected = false;
+                        
+                        // Try to reconnect after a delay
+                        if (this.currentUser) {
+                            this.scheduleReconnect();
+                        }
+                    };
+                },
+                
+                handleWebSocketMessage(data) {
+                    if (data.type === 'new_message') {
+                        const message = data.message;
+                        // Add message if it's for the current channel and not already present
+                        if (message.channelId === this.currentChannel?.id) {
+                            if (!this.messages.find(m => m.id === message.id)) {
+                                this.messages.push(message);
+                                this.$nextTick(() => this.scrollToBottom());
+                            }
+                        }
+                    } else if (data.type === 'users_update') {
+                        this.users = data.users;
+                    } else if (data.type === 'pong') {
+                        // Keep-alive response
+                    }
+                },
+                
+                startPingInterval() {
+                    // Send ping every 30 seconds to keep connection alive
+                    this.pingInterval = setInterval(() => {
+                        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                            this.websocket.send(JSON.stringify({ type: 'ping' }));
+                        }
+                    }, 30000);
+                },
+                
+                scheduleReconnect() {
+                    if (this.reconnectInterval) return;
+                    
+                    // Try to reconnect every 5 seconds
+                    this.reconnectInterval = setInterval(() => {
+                        if (this.currentUser && !this.isConnected) {
+                            console.log('Attempting to reconnect WebSocket...');
+                            this.connectWebSocket();
+                        }
+                    }, 5000);
+                },
+                
+                closeWebSocket() {
+                    if (this.pingInterval) {
+                        clearInterval(this.pingInterval);
+                        this.pingInterval = null;
+                    }
+                    if (this.websocket) {
+                        this.websocket.close();
+                        this.websocket = null;
+                    }
+                    this.isConnected = false;
                 },
                 
                 async loadChannels() {
@@ -605,14 +720,18 @@
                     // Only poll if not already polling
                     if (this.pollInterval) return;
                     
+                    // Only use polling as fallback when WebSocket is not connected
                     this.pollInterval = setInterval(async () => {
-                        if (this.currentUser && this.currentChannel) {
-                            await this.loadMessages();
+                        // Only poll if WebSocket is not connected
+                        if (!this.isConnected) {
+                            if (this.currentUser && this.currentChannel) {
+                                await this.loadMessages();
+                            }
+                            if (this.currentUser) {
+                                await this.loadUsers();
+                            }
                         }
-                        if (this.currentUser) {
-                            await this.loadUsers();
-                        }
-                    }, 2000);
+                    }, 5000); // Less frequent polling since it's just fallback
                 },
                 
                 scrollToBottom() {
