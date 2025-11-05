@@ -218,7 +218,9 @@ public class ChatController {
                 }
             } catch (Exception e) {
                 logger.error("Error generating AI response", e);
-                chatService.sendAIMessage(channelId, "Sorry, I encountered an error while processing your request.");
+                String errorMessage = "Sorry, I encountered an error while processing your request.";
+                String formattedResponse = formatAIResponseWithQuote(content, errorMessage);
+                chatService.sendAIMessage(channelId, formattedResponse);
             }
         });
     }
@@ -265,7 +267,9 @@ public class ChatController {
             }
         } catch (Exception e) {
             logger.error("Error handling summary request", e);
-            chatService.sendAIMessage(channelId, "Sorry, I encountered an error while creating the summary.");
+            String errorMessage = "Sorry, I encountered an error while creating the summary.";
+            String formattedResponse = formatAIResponseWithQuote(userMessage.getContent(), errorMessage);
+            chatService.sendAIMessage(channelId, formattedResponse);
         }
     }
     
