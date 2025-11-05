@@ -135,4 +135,37 @@ class ChatServiceTest {
         assertEquals("Message 6", messages.get(0).getContent());
         assertEquals("Message 10", messages.get(4).getContent());
     }
+    
+    @Test
+    void testIsNicknameExists() {
+        chatService.createUser("UniqueAlice123");
+        
+        assertTrue(chatService.isNicknameExists("UniqueAlice123"));
+        assertTrue(chatService.isNicknameExists("uniquealice123")); // Case insensitive
+        assertFalse(chatService.isNicknameExists("NonExistentNickname999"));
+    }
+    
+    @Test
+    void testRemoveUser() {
+        User user = chatService.createUser("TestRemove");
+        String userId = user.getId();
+        String privateChannelId = "private-" + userId;
+        
+        // Verify user and private channel exist
+        assertNotNull(chatService.getUser(userId));
+        assertNotNull(chatService.getChannel(privateChannelId));
+        
+        // Remove user
+        chatService.removeUser(userId);
+        
+        // Verify user and private channel are removed
+        assertNull(chatService.getUser(userId));
+        assertNull(chatService.getChannel(privateChannelId));
+    }
+    
+    @Test
+    void testRemoveNonExistentUser() {
+        // Should not throw exception
+        chatService.removeUser("non-existent-id");
+    }
 }

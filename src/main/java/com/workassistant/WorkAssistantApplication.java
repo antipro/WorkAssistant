@@ -85,6 +85,13 @@ public class WorkAssistantApplication {
         app.post("/api/chat/channels", chatController::createChannel);
         app.get("/api/chat/channels/{channelId}/messages", chatController::getMessages);
         app.post("/api/chat/messages", chatController::sendMessage);
+        
+        // WebSocket route
+        app.ws("/ws/chat", ws -> {
+            ws.onConnect(chatController::handleWebSocketConnect);
+            ws.onMessage(chatController::handleWebSocketMessage);
+            ws.onClose(chatController::handleWebSocketClose);
+        });
     }
 
     // Simple health check response class

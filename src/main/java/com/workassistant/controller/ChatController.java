@@ -10,10 +10,15 @@ import com.workassistant.service.ChatService;
 import com.workassistant.service.OllamaService;
 import com.workassistant.service.ElasticsearchService;
 import io.javalin.http.Context;
+import io.javalin.websocket.WsCloseContext;
+import io.javalin.websocket.WsConnectContext;
+import io.javalin.websocket.WsMessageContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -30,12 +35,16 @@ public class ChatController {
     private final OllamaService ollamaService;
     private final ElasticsearchService elasticsearchService;
     private final ExecutorService aiExecutor;
+    private final Map<String, WsConnectContext> userSessions;
+    private final ObjectMapper objectMapper;
 
     public ChatController(ChatService chatService, OllamaService ollamaService) {
         this.chatService = chatService;
         this.ollamaService = ollamaService;
         this.elasticsearchService = ElasticsearchService.getInstance();
         this.aiExecutor = Executors.newFixedThreadPool(5);
+        this.userSessions = new ConcurrentHashMap<>();
+        this.objectMapper = new ObjectMapper();
     }
 
     public void login(Context ctx) {
@@ -45,6 +54,12 @@ public class ChatController {
             
             if (nickname == null || nickname.trim().isEmpty()) {
                 ctx.json(ApiResponse.error("Nickname is required"));
+                return;
+            }
+            
+            // Check if nickname already exists
+            if (chatService.isNicknameExists(nickname.trim())) {
+                ctx.json(ApiResponse.error("Nickname already exists. Please choose a different one."));
                 return;
             }
             
@@ -167,6 +182,9 @@ public class ChatController {
                 return;
             }
             
+            // Broadcast message to all connected clients via WebSocket
+            broadcastMessage(message);
+            
             // Trigger AI if message contains @eking or the channel is a private AI assistant channel
             Channel channel = chatService.getChannel(channelId);
             boolean triggerAI = content.contains("@eking") || (channel != null && channel.isPrivate());
@@ -211,16 +229,19 @@ public class ChatController {
                 } else {
                     // Regular chat response
                     String aiResponse = ollamaService.generateSimple(prompt);
-                    // Quote the user's input in the response
-                    String formattedResponse = formatAIResponseWithQuote(content, aiResponse);
-                    chatService.sendAIMessage(channelId, formattedResponse);
+                    Message aiMessage = chatService.sendAIMessage(channelId, aiResponse);
+                    // Broadcast AI message to all connected clients
+                    if (aiMessage != null) {
+                        broadcastMessage(aiMessage);
+                    }
                     logger.info("AI response sent to channel: {}", channelId);
                 }
             } catch (Exception e) {
                 logger.error("Error generating AI response", e);
-                String errorMessage = "Sorry, I encountered an error while processing your request.";
-                String formattedResponse = formatAIResponseWithQuote(content, errorMessage);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message errorMessage = chatService.sendAIMessage(channelId, "Sorry, I encountered an error while processing your request.");
+                if (errorMessage != null) {
+                    broadcastMessage(errorMessage);
+                }
             }
         });
     }
@@ -250,26 +271,31 @@ public class ChatController {
                         "**Title:** " + summaryDoc.getTitle() + "\n\n" +
                         "**Content:**\n" + summaryDoc.getContent() + "\n\n" +
                         "**Keywords:** " + String.join(", ", summaryDoc.getKeywords());
-                    String formattedResponse = formatAIResponseWithQuote(originalUserMessage, successMsg);
-                    chatService.sendAIMessage(channelId, formattedResponse);
+                    Message aiMessage = chatService.sendAIMessage(channelId, successMsg);
+                    if (aiMessage != null) {
+                        broadcastMessage(aiMessage);
+                    }
                     logger.info("Summary indexed in Elasticsearch: {}", summaryDoc.getId());
                 } catch (Exception e) {
                     logger.error("Failed to index summary in Elasticsearch", e);
-                    String errorMsg = "Summary created but failed to store in Elasticsearch:\n\n" + aiResponse;
-                    String formattedResponse = formatAIResponseWithQuote(originalUserMessage, errorMsg);
-                    chatService.sendAIMessage(channelId, formattedResponse);
+                    Message aiMessage = chatService.sendAIMessage(channelId, "Summary created but failed to store in Elasticsearch:\n\n" + aiResponse);
+                    if (aiMessage != null) {
+                        broadcastMessage(aiMessage);
+                    }
                 }
             } else {
                 logger.warn("Elasticsearch not available, sending summary without indexing");
-                String warningMsg = "⚠️ Elasticsearch is not available. Summary:\n\n" + aiResponse;
-                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, warningMsg);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message aiMessage = chatService.sendAIMessage(channelId, "⚠️ Elasticsearch is not available. Summary:\n\n" + aiResponse);
+                if (aiMessage != null) {
+                    broadcastMessage(aiMessage);
+                }
             }
         } catch (Exception e) {
             logger.error("Error handling summary request", e);
-            String errorMessage = "Sorry, I encountered an error while creating the summary.";
-            String formattedResponse = formatAIResponseWithQuote(userMessage.getContent(), errorMessage);
-            chatService.sendAIMessage(channelId, formattedResponse);
+            Message aiMessage = chatService.sendAIMessage(channelId, "Sorry, I encountered an error while creating the summary.");
+            if (aiMessage != null) {
+                broadcastMessage(aiMessage);
+            }
         }
     }
     
@@ -326,9 +352,11 @@ public class ChatController {
             
             // Check if Elasticsearch is available
             if (!elasticsearchService.isAvailable()) {
-                String errorMsg = "⚠️ Sorry, the search service is not available. Elasticsearch is not connected.";
-                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, errorMsg);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message aiMessage = chatService.sendAIMessage(channelId, 
+                    "⚠️ Sorry, the search service is not available. Elasticsearch is not connected.");
+                if (aiMessage != null) {
+                    broadcastMessage(aiMessage);
+                }
                 logger.warn("Search request received but Elasticsearch is not available");
                 return;
             }
@@ -337,9 +365,11 @@ public class ChatController {
             String searchQuery = extractSearchKeywords(prompt);
             
             if (searchQuery.isEmpty()) {
-                String helpMsg = "Please provide keywords to search. For example: '@eking search project architecture'";
-                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, helpMsg);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message aiMessage = chatService.sendAIMessage(channelId, 
+                    "Please provide keywords to search. For example: '@eking search project architecture'");
+                if (aiMessage != null) {
+                    broadcastMessage(aiMessage);
+                }
                 return;
             }
             
@@ -350,21 +380,27 @@ public class ChatController {
                 // If no results from ES, try to get AI to help
                 String aiResponse = ollamaService.generateSimple(
                     "User is asking about: " + searchQuery + ". No previous summaries found. Provide a helpful response.");
-                String noResultsMsg = "🔍 No previous summaries found for: **" + searchQuery + "**\n\n" + aiResponse;
-                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, noResultsMsg);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message aiMessage = chatService.sendAIMessage(channelId, 
+                    "🔍 No previous summaries found for: **" + searchQuery + "**\n\n" + aiResponse);
+                if (aiMessage != null) {
+                    broadcastMessage(aiMessage);
+                }
             } else {
                 // Format results in markdown
                 String formattedResults = formatSearchResults(searchQuery, results);
-                String formattedResponse = formatAIResponseWithQuote(originalUserMessage, formattedResults);
-                chatService.sendAIMessage(channelId, formattedResponse);
+                Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                if (aiMessage != null) {
+                    broadcastMessage(aiMessage);
+                }
                 logger.info("Search results sent for query: {} - {} results", searchQuery, results.size());
             }
         } catch (Exception e) {
             logger.error("Error handling search request", e);
-            String errorMsg = "Sorry, I encountered an error while searching. Please try again later.";
-            String formattedResponse = formatAIResponseWithQuote(userMessage.getContent(), errorMsg);
-            chatService.sendAIMessage(channelId, formattedResponse);
+            Message aiMessage = chatService.sendAIMessage(channelId, 
+                "Sorry, I encountered an error while searching. Please try again later.");
+            if (aiMessage != null) {
+                broadcastMessage(aiMessage);
+            }
         }
     }
     
@@ -418,10 +454,95 @@ public class ChatController {
         return sb.toString();
     }
     
-    /**
-     * Format AI response with quoted user input
-     */
-    private String formatAIResponseWithQuote(String userInput, String aiResponse) {
-        return "> " + userInput + "\n\n" + aiResponse;
+    // WebSocket handlers
+    public void handleWebSocketConnect(WsConnectContext ctx) {
+        String userId = ctx.queryParam("userId");
+        if (userId != null && !userId.isEmpty()) {
+            userSessions.put(userId, ctx);
+            chatService.setUserOnline(userId, true);
+            logger.info("User connected via WebSocket: {}", userId);
+            
+            // Broadcast user list update to all connected clients
+            broadcastUserListUpdate();
+        }
+    }
+    
+    public void handleWebSocketMessage(WsMessageContext ctx) {
+        try {
+            String messageJson = ctx.message();
+            Map<String, String> messageData = objectMapper.readValue(messageJson, Map.class);
+            
+            String type = messageData.get("type");
+            if ("ping".equals(type)) {
+                // Respond to ping to keep connection alive
+                ctx.send("{\"type\":\"pong\"}");
+                return;
+            }
+            
+            // Handle other message types if needed
+            logger.debug("Received WebSocket message: {}", messageJson);
+        } catch (Exception e) {
+            logger.error("Error processing WebSocket message", e);
+        }
+    }
+    
+    public void handleWebSocketClose(WsCloseContext ctx) {
+        String userId = ctx.queryParam("userId");
+        if (userId != null && !userId.isEmpty()) {
+            // Remove session and user atomically
+            removeUserSession(userId);
+            logger.info("User disconnected via WebSocket and removed from memory: {}", userId);
+            
+            // Broadcast user list update to all connected clients
+            broadcastUserListUpdate();
+        }
+    }
+    
+    private synchronized void removeUserSession(String userId) {
+        userSessions.remove(userId);
+        chatService.removeUser(userId);
+    }
+    
+    private void broadcastUserListUpdate() {
+        try {
+            List<User> onlineUsers = chatService.getOnlineUsers();
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", "users_update");
+            message.put("users", onlineUsers);
+            
+            String jsonMessage = objectMapper.writeValueAsString(message);
+            
+            // Send to all connected clients
+            for (WsConnectContext session : userSessions.values()) {
+                try {
+                    session.send(jsonMessage);
+                } catch (Exception e) {
+                    logger.error("Error sending user list update to client", e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error broadcasting user list update", e);
+        }
+    }
+    
+    public void broadcastMessage(Message message) {
+        try {
+            Map<String, Object> wsMessage = new HashMap<>();
+            wsMessage.put("type", "new_message");
+            wsMessage.put("message", message);
+            
+            String jsonMessage = objectMapper.writeValueAsString(wsMessage);
+            
+            // Send to all connected clients
+            for (WsConnectContext session : userSessions.values()) {
+                try {
+                    session.send(jsonMessage);
+                } catch (Exception e) {
+                    logger.error("Error broadcasting message to client", e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error broadcasting message", e);
+        }
     }
 }
