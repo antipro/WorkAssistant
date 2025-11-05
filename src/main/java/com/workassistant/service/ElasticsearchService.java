@@ -54,9 +54,43 @@ public class ElasticsearchService {
     }
 
     private void initializeClient() {
-        RestClient restClient = RestClient.builder(
-            new HttpHost(host, port, "http")
-        ).build();
+        AppConfig config = AppConfig.getInstance();
+        String scheme = config.getElasticsearchScheme();
+
+        HttpHost httpHost = new HttpHost(host, port, scheme);
+
+    org.elasticsearch.client.RestClientBuilder builder = RestClient.builder(httpHost);
+
+        String user = config.getElasticsearchUsername();
+        String pass = config.getElasticsearchPassword();
+        boolean trustAll = config.isElasticsearchTrustAll();
+
+        // If HTTPS and trustAll requested, configure SSL context that trusts all certs
+        if ("https".equalsIgnoreCase(scheme) && trustAll) {
+            try {
+                javax.net.ssl.SSLContext sslContext = org.apache.http.ssl.SSLContexts.custom()
+                        .loadTrustMaterial(null, (chain, authType) -> true)
+                        .build();
+        builder.setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder
+            .setSSLContext(sslContext)
+            .setSSLHostnameVerifier((hostname, session) -> true)
+        );
+            } catch (Exception e) {
+                logger.warn("Failed to configure trust-all SSL for Elasticsearch: {}", e.getMessage());
+            }
+        }
+
+        // If credentials provided, set default credentials provider
+        if (user != null && !user.isEmpty() && pass != null) {
+        final org.apache.http.impl.client.BasicCredentialsProvider credsProvider = new org.apache.http.impl.client.BasicCredentialsProvider();
+        credsProvider.setCredentials(
+            new org.apache.http.auth.AuthScope(host, port),
+            new org.apache.http.auth.UsernamePasswordCredentials(user, pass)
+        );
+        builder.setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder.setDefaultCredentialsProvider(credsProvider));
+        }
+
+        RestClient restClient = builder.build();
         
         RestClientTransport transport = new RestClientTransport(
             restClient, new JacksonJsonpMapper()
@@ -70,73 +104,74 @@ public class ElasticsearchService {
      * Create index with IK analyzer template if it doesn't exist
      */
     private void createIndexWithTemplate() throws IOException {
-        try {
-            // Check if index exists
-            boolean exists = client.indices().exists(
-                ExistsRequest.of(e -> e.index(indexName))
-            ).value();
-            
-            if (!exists) {
-                // Create index with mappings
-                Map<String, Property> properties = new HashMap<>();
-                
-                // title field with IK analyzer
-                properties.put("title", Property.of(p -> p
-                    .text(TextProperty.of(t -> t
-                        .analyzer("ik_max_word")
-                        .searchAnalyzer("ik_smart")
-                    ))
-                ));
-                
-                // content field with IK analyzer (markdown format)
-                properties.put("content", Property.of(p -> p
-                    .text(TextProperty.of(t -> t
-                        .analyzer("ik_max_word")
-                        .searchAnalyzer("ik_smart")
-                    ))
-                ));
-                
-                // keywords field with IK analyzer
-                properties.put("keywords", Property.of(p -> p
-                    .text(TextProperty.of(t -> t
-                        .analyzer("ik_max_word")
-                        .searchAnalyzer("ik_smart")
-                    ))
-                ));
-                
-                // timestamp field
-                properties.put("timestamp", Property.of(p -> p
-                    .date(DateProperty.of(d -> d
-                        .format("strict_date_optional_time||epoch_millis")
-                    ))
-                ));
-                
-                // channelId field (keyword - not analyzed)
-                properties.put("channelId", Property.of(p -> p
-                    .keyword(KeywordProperty.of(k -> k))
-                ));
-                
-                // userId field (keyword - not analyzed)
-                properties.put("userId", Property.of(p -> p
-                    .keyword(KeywordProperty.of(k -> k))
-                ));
-                
-                // Create index with mappings
-                client.indices().create(CreateIndexRequest.of(c -> c
-                    .index(indexName)
-                    .mappings(TypeMapping.of(m -> m
-                        .properties(properties)
-                    ))
-                ));
-                
-                logger.info("Created Elasticsearch index: {} with IK analyzer mappings", indexName);
-            } else {
-                logger.info("Elasticsearch index already exists: {}", indexName);
+        AppConfig config = AppConfig.getInstance();
+        int maxRetries = config.getElasticsearchRetryCount();
+        int delayMs = config.getElasticsearchRetryDelayMs();
+
+        int attempt = 0;
+        while (true) {
+            attempt++;
+            try {
+                boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(indexName))).value();
+                if (!exists) {
+                    // Create index with IK analyzer mappings (best-effort)
+                    Map<String, Property> properties = new HashMap<>();
+
+                    properties.put("title", Property.of(p -> p
+                        .text(TextProperty.of(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart")
+                        ))
+                    ));
+
+                    properties.put("content", Property.of(p -> p
+                        .text(TextProperty.of(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart")
+                        ))
+                    ));
+
+                    properties.put("keywords", Property.of(p -> p
+                        .text(TextProperty.of(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart")
+                        ))
+                    ));
+
+                    properties.put("timestamp", Property.of(p -> p
+                        .date(DateProperty.of(d -> d.format("strict_date_optional_time||epoch_millis")))
+                    ));
+
+                    properties.put("channelId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+                    properties.put("userId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
+
+                    client.indices().create(CreateIndexRequest.of(c -> c
+                        .index(indexName)
+                        .mappings(TypeMapping.of(m -> m.properties(properties)))
+                    ));
+
+                    logger.info("Created Elasticsearch index: {} with IK analyzer mappings", indexName);
+                } else {
+                    logger.info("Elasticsearch index already exists: {}", indexName);
+                }
+                // success -> break
+                break;
+            } catch (Exception e) {
+                logger.warn("Attempt {}: Failed to create/check index: {}", attempt, e.getMessage());
+                if (attempt >= maxRetries) {
+                    logger.warn("Exceeded max retries ({}) for index creation, falling back to standard analyzer", maxRetries);
+                    // fallback to standard analyzer (no retries)
+                    createIndexWithStandardAnalyzer();
+                    break;
+                } else {
+                    try {
+                        Thread.sleep(delayMs * (long) Math.pow(2, attempt - 1)); // exponential backoff
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        logger.warn("Retry sleep interrupted");
+                    }
+                }
             }
-        } catch (Exception e) {
-            logger.warn("Could not create Elasticsearch index (IK analyzer might not be available): {}", e.getMessage());
-            // Try creating with standard analyzer as fallback
-            createIndexWithStandardAnalyzer();
         }
     }
 

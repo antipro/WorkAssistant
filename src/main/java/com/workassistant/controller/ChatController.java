@@ -167,8 +167,10 @@ public class ChatController {
                 return;
             }
             
-            // Check if message contains @eking to trigger AI response
-            if (content.contains("@eking")) {
+            // Trigger AI if message contains @eking or the channel is a private AI assistant channel
+            Channel channel = chatService.getChannel(channelId);
+            boolean triggerAI = content.contains("@eking") || (channel != null && channel.isPrivate());
+            if (triggerAI) {
                 handleAIRequest(channelId, content, message);
             }
             
