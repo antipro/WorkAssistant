@@ -426,7 +426,8 @@
                         <textarea 
                             class="message-input" 
                             v-model="messageText"
-                            @keydown.enter.prevent="sendMessage"
+                            @keydown.enter.exact.prevent=""
+                            @keydown.enter.shift.prevent="sendMessage"
                             placeholder="Type a message... Use @eking to mention AI, #channelname to create a channel"
                         ></textarea>
                         <button class="send-btn" @click="sendMessage" :disabled="!messageText.trim() || sending">
@@ -434,7 +435,7 @@
                         </button>
                     </div>
                     <div class="input-hint">
-                        💡 Tip: Type #channelname to create a new channel, @eking to call AI assistant
+                        💡 Tip: Press Shift+Enter to send. Type #channelname to create a new channel, @eking to call AI assistant
                     </div>
                 </div>
             </div>

@@ -248,6 +248,9 @@ public class ChatController {
     
     private void handleSummaryRequest(String channelId, String prompt, Message userMessage) {
         try {
+            // Get original user message content
+            String originalUserMessage = userMessage.getContent();
+            
             // Create a summary prompt
             String summaryPrompt = "Please create a structured summary in markdown format with the following sections:\n" +
                 "1. Title (one line)\n" +
@@ -344,6 +347,9 @@ public class ChatController {
     
     private void handleSearchRequest(String channelId, String prompt, Message userMessage) {
         try {
+            // Get original user message content
+            String originalUserMessage = userMessage.getContent();
+            
             // Check if Elasticsearch is available
             if (!elasticsearchService.isAvailable()) {
                 Message aiMessage = chatService.sendAIMessage(channelId, 
