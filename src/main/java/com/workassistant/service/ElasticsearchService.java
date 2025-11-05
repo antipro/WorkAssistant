@@ -65,29 +65,44 @@ public class ElasticsearchService {
         String pass = config.getElasticsearchPassword();
         boolean trustAll = config.isElasticsearchTrustAll();
 
-        // If HTTPS and trustAll requested, configure SSL context that trusts all certs
+        // Build a single HttpClientConfigCallback that applies both trust-all SSL (dev-only) and credentials
+        final org.apache.http.impl.client.BasicCredentialsProvider credsProvider = new org.apache.http.impl.client.BasicCredentialsProvider();
+        boolean hasCreds = user != null && !user.isEmpty() && pass != null;
+        if (hasCreds) {
+            credsProvider.setCredentials(
+                new org.apache.http.auth.AuthScope(host, port),
+                new org.apache.http.auth.UsernamePasswordCredentials(user, pass)
+            );
+        }
+
         if ("https".equalsIgnoreCase(scheme) && trustAll) {
             try {
                 javax.net.ssl.SSLContext sslContext = org.apache.http.ssl.SSLContexts.custom()
                         .loadTrustMaterial(null, (chain, authType) -> true)
                         .build();
-        builder.setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder
-            .setSSLContext(sslContext)
-            .setSSLHostnameVerifier((hostname, session) -> true)
-        );
+
+                final javax.net.ssl.SSLContext finalSslContext = sslContext;
+                builder.setHttpClientConfigCallback(httpClientBuilder -> {
+                    org.apache.http.impl.nio.client.HttpAsyncClientBuilder hcb = httpClientBuilder;
+                    hcb.setSSLContext(finalSslContext);
+                    hcb.setSSLHostnameVerifier((hostname, session) -> true);
+                    if (hasCreds) {
+                        hcb.setDefaultCredentialsProvider(credsProvider);
+                    }
+                    return hcb;
+                });
             } catch (Exception e) {
                 logger.warn("Failed to configure trust-all SSL for Elasticsearch: {}", e.getMessage());
             }
-        }
-
-        // If credentials provided, set default credentials provider
-        if (user != null && !user.isEmpty() && pass != null) {
-        final org.apache.http.impl.client.BasicCredentialsProvider credsProvider = new org.apache.http.impl.client.BasicCredentialsProvider();
-        credsProvider.setCredentials(
-            new org.apache.http.auth.AuthScope(host, port),
-            new org.apache.http.auth.UsernamePasswordCredentials(user, pass)
-        );
-        builder.setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder.setDefaultCredentialsProvider(credsProvider));
+        } else {
+            // only credentials (no trust-all SSL)
+            if (hasCreds) {
+                builder.setHttpClientConfigCallback(httpClientBuilder -> {
+                    org.apache.http.impl.nio.client.HttpAsyncClientBuilder hcb = httpClientBuilder;
+                    hcb.setDefaultCredentialsProvider(credsProvider);
+                    return hcb;
+                });
+            }
         }
 
         RestClient restClient = builder.build();
