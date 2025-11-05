@@ -22,6 +22,7 @@ public class ZentaoService {
     private final AppConfig config;
     private final String baseUrl;
     private String sessionToken;
+    private String sessionHeaderName = "Token";
 
     public ZentaoService() {
         this.config = AppConfig.getInstance();
@@ -43,22 +44,47 @@ public class ZentaoService {
         String account = config.getZentaoAccount();
         String password = config.getZentaoPassword();
 
-        // Zentao uses Basic Auth for REST API
+        // Prepare Basic fallback
         String credentials = account + ":" + password;
         String basicAuth = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
 
+        // Build JSON payload {"account":"...","password":"..."}
+        java.util.Map<String, String> payload = new java.util.HashMap<>();
+        payload.put("account", account);
+        payload.put("password", password);
+        String jsonPayload = objectMapper.writeValueAsString(payload);
+
         Request request = new Request.Builder()
-                .url(baseUrl + "/api.php/v1/tokens")
-                .header("Authorization", basicAuth)
-                .get()
-                .build();
+            .url(baseUrl + "/api.php/v1/tokens")
+            .post(RequestBody.create(jsonPayload, JSON))
+            .build();
 
         try (Response response = client.newCall(request).execute()) {
             if (response.isSuccessful()) {
                 String responseBody = response.body().string();
-                // Parse and store session token if needed
+                String token = null;
+                try {
+                    com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(responseBody);
+                    if (node.has("token")) {
+                        token = node.get("token").asText(null);
+                    } else if (node.has("data") && node.get("data").has("token")) {
+                        token = node.get("data").get("token").asText(null);
+                    }
+                } catch (Exception ex) {
+                    logger.debug("Failed to parse Zentao token response JSON", ex);
+                }
+
+                if (token != null && !token.isEmpty()) {
+                    // use Token header with raw token value
+                    sessionHeaderName = "Token";
+                    sessionToken = token;
+                } else {
+                    // fallback to Basic auth header
+                    sessionHeaderName = "Authorization";
+                    sessionToken = basicAuth;
+                }
+
                 logger.info("Zentao authentication successful");
-                sessionToken = basicAuth; // Store auth header for reuse
                 return true;
             } else {
                 logger.error("Zentao authentication failed: {}", response.code());
@@ -76,26 +102,13 @@ public class ZentaoService {
     public String getProjects() throws IOException {
         ensureAuthenticated();
         logger.info("Fetching projects from Zentao");
-
         Request request = new Request.Builder()
                 .url(baseUrl + "/api.php/v1/projects")
-                .header("Authorization", sessionToken)
+                .header(sessionHeaderName, sessionToken)
                 .get()
                 .build();
 
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                logger.error("Failed to fetch projects: {}", response.code());
-                throw new IOException("Unexpected response code: " + response.code());
-            }
-
-            String responseBody = response.body().string();
-            logger.info("Projects fetched successfully");
-            return responseBody;
-        } catch (IOException e) {
-            logger.error("Error fetching projects from Zentao", e);
-            throw e;
-        }
+        return executeRequestWithRetry(request, "Failed to fetch projects");
     }
 
     /**
@@ -106,7 +119,8 @@ public class ZentaoService {
     }
 
     /**
-     * Get tasks from Zentao with optional query parameters (e.g., assignedTo, project, status)
+     * Get tasks from Zentao with optional query parameters (e.g., assignedTo,
+     * project, status)
      */
     public String getTasks(java.util.Map<String, String> queryParams) throws IOException {
         ensureAuthenticated();
@@ -118,9 +132,9 @@ public class ZentaoService {
             for (java.util.Map.Entry<String, String> e : queryParams.entrySet()) {
                 if (e.getValue() != null && !e.getValue().isEmpty()) {
                     sb.append(java.net.URLEncoder.encode(e.getKey(), java.nio.charset.StandardCharsets.UTF_8))
-                      .append("=")
-                      .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
-                      .append("&");
+                            .append("=")
+                            .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
+                            .append("&");
                 }
             }
             // remove trailing &
@@ -129,23 +143,11 @@ public class ZentaoService {
 
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", sessionToken)
+                .header(sessionHeaderName, sessionToken)
                 .get()
                 .build();
 
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                logger.error("Failed to fetch tasks: {}", response.code());
-                throw new IOException("Unexpected response code: " + response.code());
-            }
-
-            String responseBody = response.body().string();
-            logger.info("Tasks fetched successfully");
-            return responseBody;
-        } catch (IOException e) {
-            logger.error("Error fetching tasks from Zentao", e);
-            throw e;
-        }
+        return executeRequestWithRetry(request, "Failed to fetch tasks");
     }
 
     /**
@@ -168,9 +170,9 @@ public class ZentaoService {
             for (java.util.Map.Entry<String, String> e : queryParams.entrySet()) {
                 if (e.getValue() != null && !e.getValue().isEmpty()) {
                     sb.append(java.net.URLEncoder.encode(e.getKey(), java.nio.charset.StandardCharsets.UTF_8))
-                      .append("=")
-                      .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
-                      .append("&");
+                            .append("=")
+                            .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
+                            .append("&");
                 }
             }
             url = sb.substring(0, sb.length() - 1);
@@ -178,21 +180,53 @@ public class ZentaoService {
 
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", sessionToken)
+                .header(sessionHeaderName, sessionToken)
                 .get()
                 .build();
 
+        return executeRequestWithRetry(request, "Failed to fetch bugs");
+    }
+
+    /**
+     * Execute request and retry once if a 401 is returned (to handle expired
+     * tokens).
+     */
+    private String executeRequestWithRetry(Request request, String errorLogPrefix) throws IOException {
         try (Response response = client.newCall(request).execute()) {
+            if (response.code() == 401) {
+                logger.warn("Received 401, attempting re-authentication and retry");
+                // try re-auth
+                if (authenticate()) {
+                    // rebuild request with new token
+                    Request retryReq = request.newBuilder()
+                            .header(sessionHeaderName, sessionToken)
+                            .build();
+
+                    try (Response retryResp = client.newCall(retryReq).execute()) {
+                        if (!retryResp.isSuccessful()) {
+                            logger.error("{}: {}", errorLogPrefix, retryResp.code());
+                            throw new IOException("Unexpected response code: " + retryResp.code());
+                        }
+                        String body = retryResp.body().string();
+                        logger.info("Request successful after retry");
+                        return body;
+                    }
+                } else {
+                    logger.error("Re-authentication failed");
+                    throw new IOException("Authentication failed during retry");
+                }
+            }
+
             if (!response.isSuccessful()) {
-                logger.error("Failed to fetch bugs: {}", response.code());
+                logger.error("{}: {}", errorLogPrefix, response.code());
                 throw new IOException("Unexpected response code: " + response.code());
             }
 
             String responseBody = response.body().string();
-            logger.info("Bugs fetched successfully");
+            logger.info("Request successful");
             return responseBody;
         } catch (IOException e) {
-            logger.error("Error fetching bugs from Zentao", e);
+            logger.error("{}", errorLogPrefix, e);
             throw e;
         }
     }
