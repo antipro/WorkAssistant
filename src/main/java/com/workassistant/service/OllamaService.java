@@ -238,6 +238,151 @@ public class OllamaService {
     }
 
     /**
+     * Continue chat conversation with function result.
+     * This method is used after the model has called a tool/function.
+     * It sends the function result back to Ollama to get a natural language response.
+     * 
+     * @param originalPrompt The original user prompt
+     * @param toolCalls The tool calls made by the model (as JsonNode)
+     * @param functionResult The result from executing the function
+     * @param toolsJson JSON array string containing tool definitions
+     * @return OllamaResponse containing the final natural language response
+     * @throws IOException if the request fails
+     */
+    public OllamaResponse continueConversationWithFunctionResult(
+            String originalPrompt, 
+            JsonNode toolCalls, 
+            String functionResult, 
+            String toolsJson) throws IOException {
+        return continueConversationWithFunctionResult(originalPrompt, config.getOllamaModel(), toolCalls, functionResult, toolsJson);
+    }
+
+    /**
+     * Continue chat conversation with function result using specific model.
+     * 
+     * @param originalPrompt The original user prompt
+     * @param model Model name to use
+     * @param toolCalls The tool calls made by the model (as JsonNode)
+     * @param functionResult The result from executing the function
+     * @param toolsJson JSON array string containing tool definitions
+     * @return OllamaResponse containing the final natural language response
+     * @throws IOException if the request fails
+     */
+    public OllamaResponse continueConversationWithFunctionResult(
+            String originalPrompt,
+            String model,
+            JsonNode toolCalls,
+            String functionResult,
+            String toolsJson) throws IOException {
+        logger.info("Continuing conversation with function result using model: {}", model);
+
+        // Build chat request with full conversation history:
+        // 1. User's original message
+        // 2. Assistant's tool call response
+        // 3. Tool result message
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", model);
+        root.put("stream", false);
+
+        ArrayNode messages = objectMapper.createArrayNode();
+        
+        // Message 1: User's original prompt
+        ObjectNode userMessage = objectMapper.createObjectNode();
+        userMessage.put("role", "user");
+        userMessage.put("content", originalPrompt);
+        messages.add(userMessage);
+
+        // Message 2: Assistant's response with tool_calls
+        ObjectNode assistantMessage = objectMapper.createObjectNode();
+        assistantMessage.put("role", "assistant");
+        assistantMessage.put("content", ""); // Usually empty when calling tools
+        assistantMessage.set("tool_calls", toolCalls);
+        messages.add(assistantMessage);
+
+        // Message 3: Tool result message
+        // We need to send a message with role "tool" containing the function result
+        if (toolCalls.isArray() && toolCalls.size() > 0) {
+            JsonNode firstToolCall = toolCalls.get(0);
+            JsonNode functionNode = firstToolCall.get("function");
+            if (functionNode != null) {
+                String functionName = functionNode.get("name").asText();
+                
+                ObjectNode toolMessage = objectMapper.createObjectNode();
+                toolMessage.put("role", "tool");
+                toolMessage.put("content", functionResult);
+                // Some Ollama models may need the function name in the tool message
+                // Add it if available in the tool call structure
+                if (firstToolCall.has("id")) {
+                    toolMessage.put("tool_call_id", firstToolCall.get("id").asText());
+                }
+                messages.add(toolMessage);
+            }
+        }
+
+        root.set("messages", messages);
+
+        // Add tools again for potential subsequent calls
+        if (toolsJson != null && !toolsJson.isEmpty()) {
+            try {
+                JsonNode toolsNode = objectMapper.readTree(toolsJson);
+                root.set("tools", toolsNode);
+            } catch (Exception e) {
+                logger.warn("Invalid toolsJson provided, ignoring tools field: {}", e.getMessage());
+            }
+        }
+
+        String jsonRequest = objectMapper.writeValueAsString(root);
+        System.out.println("OLLAMA CHAT REQUEST (with function result): " + jsonRequest);
+
+        RequestBody body = RequestBody.create(jsonRequest, JSON);
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/api/chat")
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                logger.error("Ollama chat API request failed: {}", response.code());
+                throw new IOException("Unexpected response code: " + response.code());
+            }
+
+            String responseBody = response.body().string();
+            System.out.println("OLLAMA CHAT RESPONSE (with function result): " + responseBody);
+
+            // Parse the response to extract the final message content
+            try {
+                JsonNode responseJson = objectMapper.readTree(responseBody);
+                JsonNode messageNode = responseJson.get("message");
+
+                OllamaResponse ollamaResponse = new OllamaResponse();
+
+                if (messageNode != null) {
+                    JsonNode contentNode = messageNode.get("content");
+                    if (contentNode != null) {
+                        ollamaResponse.setResponse(contentNode.asText());
+                    } else {
+                        ollamaResponse.setResponse(responseBody);
+                    }
+                } else {
+                    // Fallback to raw response
+                    ollamaResponse.setResponse(responseBody);
+                }
+
+                logger.info("Ollama chat response with function result received successfully");
+                return ollamaResponse;
+            } catch (Exception e) {
+                logger.warn("Failed to parse chat response, returning raw response", e);
+                OllamaResponse ollamaResponse = new OllamaResponse();
+                ollamaResponse.setResponse(responseBody);
+                return ollamaResponse;
+            }
+        } catch (IOException e) {
+            logger.error("Error calling Ollama chat API with function result", e);
+            throw e;
+        }
+    }
+
+    /**
      * Generate chat completion with function tools using Ollama chat API
      * @param prompt User prompt/question
      * @param model Model name to use

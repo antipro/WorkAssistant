@@ -547,12 +547,18 @@ public class ChatController {
             // Execute the appropriate Zentao function
             String functionResult = executeFunctionCall(functionName, argumentsNode);
             
-            // Send the function result back to the user
-            Message aiMessage = chatService.sendAIMessage(channelId, 
-                "🔧 **Function Call: " + functionName + "**\n\n" + functionResult);
+            // Send the function result back to Ollama to get a regularized natural language response
+            String zentaoTools = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
+            OllamaResponse finalResponse = ollamaService.continueConversationWithFunctionResult(
+                originalPrompt, toolCalls, functionResult, zentaoTools);
+            
+            // Send the regularized AI response to the user
+            String regularizedAnswer = finalResponse.getResponse();
+            Message aiMessage = chatService.sendAIMessage(channelId, regularizedAnswer);
             if (aiMessage != null) {
                 broadcastMessage(aiMessage);
             }
+            logger.info("Function result sent to Ollama and regularized response delivered to channel: {}", channelId);
             
         } catch (Exception e) {
             logger.error("Error handling function call", e);
