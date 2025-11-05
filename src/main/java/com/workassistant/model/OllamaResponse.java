@@ -1,8 +1,11 @@
 package com.workassistant.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 /**
  * Response model for Ollama API
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class OllamaResponse {
     private String model;
     private String response;
