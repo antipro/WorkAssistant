@@ -93,4 +93,30 @@ public class AppConfig {
     public String getCorsOrigins() {
         return getProperty("cors.origins", "*");
     }
+
+    // Elasticsearch helpers
+    public String getElasticsearchScheme() {
+        return getProperty("elasticsearch.scheme", "http");
+    }
+
+    public String getElasticsearchUsername() {
+        return getProperty("elasticsearch.username");
+    }
+
+    public String getElasticsearchPassword() {
+        return getProperty("elasticsearch.password");
+    }
+
+    public boolean isElasticsearchTrustAll() {
+        return Boolean.parseBoolean(getProperty("elasticsearch.trustAll", "false"));
+    }
+
+    // Elasticsearch retry/backoff
+    public int getElasticsearchRetryCount() {
+        return getIntProperty("elasticsearch.retry.count", 5);
+    }
+
+    public int getElasticsearchRetryDelayMs() {
+        return getIntProperty("elasticsearch.retry.delayMs", 2000);
+    }
 }
