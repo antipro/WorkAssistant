@@ -102,11 +102,33 @@ public class ZentaoService {
      * Get tasks from Zentao
      */
     public String getTasks() throws IOException {
+        return getTasks(null);
+    }
+
+    /**
+     * Get tasks from Zentao with optional query parameters (e.g., assignedTo, project, status)
+     */
+    public String getTasks(java.util.Map<String, String> queryParams) throws IOException {
         ensureAuthenticated();
-        logger.info("Fetching tasks from Zentao");
+        logger.info("Fetching tasks from Zentao with params: {}", queryParams);
+
+        String url = baseUrl + "/api.php/v1/tasks";
+        if (queryParams != null && !queryParams.isEmpty()) {
+            StringBuilder sb = new StringBuilder(url).append("?");
+            for (java.util.Map.Entry<String, String> e : queryParams.entrySet()) {
+                if (e.getValue() != null && !e.getValue().isEmpty()) {
+                    sb.append(java.net.URLEncoder.encode(e.getKey(), java.nio.charset.StandardCharsets.UTF_8))
+                      .append("=")
+                      .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
+                      .append("&");
+                }
+            }
+            // remove trailing &
+            url = sb.substring(0, sb.length() - 1);
+        }
 
         Request request = new Request.Builder()
-                .url(baseUrl + "/api.php/v1/tasks")
+                .url(url)
                 .header("Authorization", sessionToken)
                 .get()
                 .build();
@@ -130,11 +152,32 @@ public class ZentaoService {
      * Get bugs from Zentao
      */
     public String getBugs() throws IOException {
+        return getBugs(null);
+    }
+
+    /**
+     * Get bugs from Zentao with optional query parameters
+     */
+    public String getBugs(java.util.Map<String, String> queryParams) throws IOException {
         ensureAuthenticated();
-        logger.info("Fetching bugs from Zentao");
+        logger.info("Fetching bugs from Zentao with params: {}", queryParams);
+
+        String url = baseUrl + "/api.php/v1/bugs";
+        if (queryParams != null && !queryParams.isEmpty()) {
+            StringBuilder sb = new StringBuilder(url).append("?");
+            for (java.util.Map.Entry<String, String> e : queryParams.entrySet()) {
+                if (e.getValue() != null && !e.getValue().isEmpty()) {
+                    sb.append(java.net.URLEncoder.encode(e.getKey(), java.nio.charset.StandardCharsets.UTF_8))
+                      .append("=")
+                      .append(java.net.URLEncoder.encode(e.getValue(), java.nio.charset.StandardCharsets.UTF_8))
+                      .append("&");
+                }
+            }
+            url = sb.substring(0, sb.length() - 1);
+        }
 
         Request request = new Request.Builder()
-                .url(baseUrl + "/api.php/v1/bugs")
+                .url(url)
                 .header("Authorization", sessionToken)
                 .get()
                 .build();

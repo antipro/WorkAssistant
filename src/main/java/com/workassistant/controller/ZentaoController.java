@@ -38,7 +38,15 @@ public class ZentaoController {
      */
     public void getTasks(Context ctx) {
         try {
-            String tasks = zentaoService.getTasks();
+            java.util.Map<String, String> params = new java.util.HashMap<>();
+            String assignedTo = ctx.queryParam("assignedTo");
+            String project = ctx.queryParam("project");
+            String status = ctx.queryParam("status");
+            if (assignedTo != null) params.put("assignedTo", assignedTo);
+            if (project != null) params.put("project", project);
+            if (status != null) params.put("status", status);
+
+            String tasks = zentaoService.getTasks(params);
             ctx.json(ApiResponse.success(objectMapper.readTree(tasks)));
         } catch (Exception e) {
             logger.error("Error fetching tasks", e);
@@ -51,7 +59,15 @@ public class ZentaoController {
      */
     public void getBugs(Context ctx) {
         try {
-            String bugs = zentaoService.getBugs();
+            java.util.Map<String, String> params = new java.util.HashMap<>();
+            String assignedTo = ctx.queryParam("assignedTo");
+            String project = ctx.queryParam("project");
+            String status = ctx.queryParam("status");
+            if (assignedTo != null) params.put("assignedTo", assignedTo);
+            if (project != null) params.put("project", project);
+            if (status != null) params.put("status", status);
+
+            String bugs = zentaoService.getBugs(params);
             ctx.json(ApiResponse.success(objectMapper.readTree(bugs)));
         } catch (Exception e) {
             logger.error("Error fetching bugs", e);

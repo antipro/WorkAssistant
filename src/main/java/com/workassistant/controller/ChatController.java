@@ -14,13 +14,19 @@ import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
 import io.javalin.websocket.WsMessageContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,7 +41,10 @@ public class ChatController {
     private final OllamaService ollamaService;
     private final ElasticsearchService elasticsearchService;
     private final ExecutorService aiExecutor;
-    private final Map<String, WsConnectContext> userSessions;
+    private final ScheduledExecutorService sessionCleanup;
+    private final Map<String, java.util.concurrent.atomic.AtomicInteger> sessionCounts;
+    // Support multiple websocket sessions per user (e.g., multiple tabs)
+    private final Map<String, java.util.Set<io.javalin.websocket.WsConnectContext>> userSessions;
     private final ObjectMapper objectMapper;
 
     public ChatController(ChatService chatService, OllamaService ollamaService) {
@@ -43,8 +52,14 @@ public class ChatController {
         this.ollamaService = ollamaService;
         this.elasticsearchService = ElasticsearchService.getInstance();
         this.aiExecutor = Executors.newFixedThreadPool(5);
-        this.userSessions = new ConcurrentHashMap<>();
-        this.objectMapper = new ObjectMapper();
+    this.sessionCleanup = Executors.newSingleThreadScheduledExecutor();
+    this.sessionCounts = new ConcurrentHashMap<>();
+    this.userSessions = new ConcurrentHashMap<>();
+    this.objectMapper = new ObjectMapper();
+    // Register JavaTimeModule to support Java 8 date/time types (e.g., LocalDateTime)
+    this.objectMapper.registerModule(new JavaTimeModule());
+    // Write dates as ISO-8601 strings instead of timestamps
+    this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     public void login(Context ctx) {
@@ -64,12 +79,16 @@ public class ChatController {
             }
             
             User user = chatService.createUser(nickname.trim());
+            // Mark the user as online immediately upon successful login
+            chatService.setUserOnline(user.getId(), true);
             
             Map<String, Object> response = new HashMap<>();
             response.put("user", user);
             response.put("privateChannel", chatService.getPrivateChannelForUser(user.getId()));
             
             ctx.json(ApiResponse.success(response));
+            // Broadcast user list update so existing connected clients see the new user
+            broadcastUserListUpdate();
         } catch (Exception e) {
             logger.error("Error during login", e);
             ctx.json(ApiResponse.error("Login failed: " + e.getMessage()));
@@ -181,7 +200,7 @@ public class ChatController {
                 ctx.json(ApiResponse.error("Failed to send message"));
                 return;
             }
-            
+
             // Broadcast message to all connected clients via WebSocket
             broadcastMessage(message);
             
@@ -192,11 +211,28 @@ public class ChatController {
                 handleAIRequest(channelId, content, message);
             }
             
-            ctx.json(ApiResponse.success(message));
+            // Return a consistent payload with formatted timestamp for HTTP clients
+            ctx.json(ApiResponse.success(convertMessageToMap(message)));
         } catch (Exception e) {
             logger.error("Error sending message", e);
             ctx.json(ApiResponse.error("Failed to send message: " + e.getMessage()));
         }
+    }
+
+    private Map<String, Object> convertMessageToMap(Message m) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", m.getId());
+        map.put("channelId", m.getChannelId());
+        map.put("userId", m.getUserId());
+        map.put("username", m.getUsername());
+        map.put("content", m.getContent());
+        // Format timestamp as ISO_OFFSET_DATE_TIME
+        String ts = m.getTimestamp()
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        map.put("timestamp", ts);
+        map.put("type", m.getType().name());
+        return map;
     }
 
     private void handleAIRequest(String channelId, String content, Message userMessage) {
@@ -458,10 +494,17 @@ public class ChatController {
     public void handleWebSocketConnect(WsConnectContext ctx) {
         String userId = ctx.queryParam("userId");
         if (userId != null && !userId.isEmpty()) {
-            userSessions.put(userId, ctx);
+
+            // Add this websocket session to the user's session set
+            java.util.Set<WsConnectContext> sessions = userSessions.computeIfAbsent(userId, k -> java.util.concurrent.ConcurrentHashMap.newKeySet());
+            sessions.add(ctx);
+
+            // Increment session count for this user
+            sessionCounts.computeIfAbsent(userId, k -> new java.util.concurrent.atomic.AtomicInteger(0)).incrementAndGet();
+
             chatService.setUserOnline(userId, true);
-            logger.info("User connected via WebSocket: {}", userId);
-            
+            logger.info("User connected via WebSocket: {} (sessions={})", userId, sessionCounts.getOrDefault(userId, new java.util.concurrent.atomic.AtomicInteger(0)).get());
+
             // Broadcast user list update to all connected clients
             broadcastUserListUpdate();
         }
@@ -489,40 +532,106 @@ public class ChatController {
     public void handleWebSocketClose(WsCloseContext ctx) {
         String userId = ctx.queryParam("userId");
         if (userId != null && !userId.isEmpty()) {
-            // Remove session and user atomically
-            removeUserSession(userId);
-            logger.info("User disconnected via WebSocket and removed from memory: {}", userId);
-            
-            // Broadcast user list update to all connected clients
-            broadcastUserListUpdate();
+            // Decrement session count
+            java.util.concurrent.atomic.AtomicInteger cnt = sessionCounts.get(userId);
+            if (cnt != null) cnt.decrementAndGet();
+
+            // Schedule a delayed check before marking user offline to avoid transient disconnects
+            sessionCleanup.schedule(() -> {
+                java.util.concurrent.atomic.AtomicInteger current = sessionCounts.get(userId);
+                int remaining = (current == null) ? 0 : current.get();
+                if (remaining <= 0) {
+                    // No remaining sessions; remove mappings and mark offline
+                    userSessions.remove(userId);
+                    sessionCounts.remove(userId);
+                    chatService.setUserOnline(userId, false);
+                    logger.info("User disconnected via WebSocket and marked offline after delay: {}", userId);
+                    broadcastUserListUpdate();
+                } else {
+                    logger.info("User {} still has {} sessions; not marking offline", userId, remaining);
+                }
+            }, 3, TimeUnit.SECONDS);
         }
     }
     
     private synchronized void removeUserSession(String userId) {
-        userSessions.remove(userId);
-        chatService.removeUser(userId);
+    // Only remove the session mapping. Do not remove the user record to avoid
+    // users disappearing from the UI on transient disconnects.
+    userSessions.remove(userId);
+    // Mark user offline
+    chatService.setUserOnline(userId, false);
     }
     
     private void broadcastUserListUpdate() {
         try {
             List<User> onlineUsers = chatService.getOnlineUsers();
-            Map<String, Object> message = new HashMap<>();
-            message.put("type", "users_update");
-            message.put("users", onlineUsers);
-            
-            String jsonMessage = objectMapper.writeValueAsString(message);
-            
-            // Send to all connected clients
-            for (WsConnectContext session : userSessions.values()) {
-                try {
-                    session.send(jsonMessage);
-                } catch (Exception e) {
-                    logger.error("Error sending user list update to client", e);
+            // For each connected user, send a personalized users_update where that user
+            // appears first and each user entry includes an isCurrent flag.
+            for (Map.Entry<String, java.util.Set<WsConnectContext>> entry : userSessions.entrySet()) {
+                String recipientUserId = entry.getKey();
+                java.util.Set<WsConnectContext> sessions = entry.getValue();
+
+                // Build personalized list: put recipient first and add isCurrent flag
+                List<Map<String, Object>> personalized = buildPersonalizedUserList(onlineUsers, recipientUserId);
+
+                Map<String, Object> message = new HashMap<>();
+                message.put("type", "users_update");
+                message.put("users", personalized);
+
+                String jsonMessage = objectMapper.writeValueAsString(message);
+
+                for (WsConnectContext session : sessions) {
+                    try {
+                        session.send(jsonMessage);
+                    } catch (Exception e) {
+                        logger.error("Error sending user list update to client, removing session", e);
+                        sessions.remove(session);
+                    }
                 }
             }
         } catch (Exception e) {
             logger.error("Error broadcasting user list update", e);
         }
+    }
+
+    private List<Map<String, Object>> buildPersonalizedUserList(List<User> users, String currentUserId) {
+        List<Map<String, Object>> list = new ArrayList<>();
+
+        // First, find the current user (if present) and add it first
+        users.stream()
+            .filter(u -> u.getId().equals(currentUserId))
+            .findFirst()
+            .ifPresent(u -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", u.getId());
+                m.put("nickname", u.getNickname());
+                // Format joinedAt as ISO_OFFSET_DATE_TIME (includes offset) for reliable JS parsing
+                String joinedAtStr = u.getJoinedAt()
+                    .atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+                m.put("joinedAt", joinedAtStr);
+                m.put("online", u.isOnline());
+                m.put("isCurrent", true);
+                list.add(m);
+            });
+
+        // Add the rest (excluding current user)
+        users.stream()
+            .filter(u -> !u.getId().equals(currentUserId))
+            .forEach(u -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", u.getId());
+                m.put("nickname", u.getNickname());
+                String joinedAtStr = u.getJoinedAt()
+                    .atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+                m.put("joinedAt", joinedAtStr);
+                m.put("online", u.isOnline());
+                m.put("isCurrent", false);
+                list.add(m);
+            });
+
+        return list;
     }
     
     public void broadcastMessage(Message message) {
@@ -533,12 +642,49 @@ public class ChatController {
             
             String jsonMessage = objectMapper.writeValueAsString(wsMessage);
             
-            // Send to all connected clients
-            for (WsConnectContext session : userSessions.values()) {
-                try {
-                    session.send(jsonMessage);
-                } catch (Exception e) {
-                    logger.error("Error broadcasting message to client", e);
+            // Send to all connected clients (all sessions for each user)
+            for (java.util.Set<WsConnectContext> sessions : userSessions.values()) {
+                for (WsConnectContext session : sessions) {
+                    try {
+                        session.send(jsonMessage);
+                    } catch (Exception e) {
+                        logger.error("Error broadcasting message to client, removing session", e);
+                        sessions.remove(session);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error broadcasting message", e);
+        }
+    }
+
+    /**
+     * Broadcast a message to all connected clients, optionally excluding sessions belonging
+     * to a specific user (useful to avoid echoing a user's own message back to them).
+     */
+    public void broadcastMessage(Message message, String excludeUserId) {
+        try {
+            Map<String, Object> wsMessage = new HashMap<>();
+            wsMessage.put("type", "new_message");
+            wsMessage.put("message", message);
+
+            String jsonMessage = objectMapper.writeValueAsString(wsMessage);
+
+            // Send to all connected clients (all sessions for each user)
+            for (Map.Entry<String, java.util.Set<WsConnectContext>> entry : userSessions.entrySet()) {
+                String userId = entry.getKey();
+                if (excludeUserId != null && excludeUserId.equals(userId)) {
+                    // Skip all sessions for the excluded user
+                    continue;
+                }
+                java.util.Set<WsConnectContext> sessions = entry.getValue();
+                for (WsConnectContext session : sessions) {
+                    try {
+                        session.send(jsonMessage);
+                    } catch (Exception e) {
+                        logger.error("Error broadcasting message to client, removing session", e);
+                        sessions.remove(session);
+                    }
                 }
             }
         } catch (Exception e) {

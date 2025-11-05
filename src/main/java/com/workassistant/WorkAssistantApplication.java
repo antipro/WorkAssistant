@@ -26,10 +26,10 @@ public class WorkAssistantApplication {
         ZentaoService zentaoService = new ZentaoService();
         ChatService chatService = ChatService.getInstance();
         
-        // Initialize controllers
-        OllamaController ollamaController = new OllamaController(ollamaService);
-        ZentaoController zentaoController = new ZentaoController(zentaoService);
-        ChatController chatController = new ChatController(chatService, ollamaService);
+    // Initialize controllers
+    OllamaController ollamaController = new OllamaController(ollamaService, zentaoService);
+    ZentaoController zentaoController = new ZentaoController(zentaoService);
+    ChatController chatController = new ChatController(chatService, ollamaService);
 
         // Create and configure Javalin app
         Javalin app = Javalin.create(javalinConfig -> {
@@ -55,20 +55,22 @@ public class WorkAssistantApplication {
             });
         }).start(config.getServerPort());
 
-        // Configure routes
-        configureRoutes(app, ollamaController, zentaoController, chatController);
+    // Configure routes
+    com.workassistant.controller.AIController aiController = new com.workassistant.controller.AIController(zentaoService);
+    configureRoutes(app, ollamaController, zentaoController, chatController, aiController);
 
         logger.info("WorkAssistant started on port {}", config.getServerPort());
         logger.info("Ollama URL: {}", config.getOllamaUrl());
         logger.info("Zentao URL: {}", config.getZentaoUrl());
     }
 
-    private static void configureRoutes(Javalin app, OllamaController ollamaController, ZentaoController zentaoController, ChatController chatController) {
+    private static void configureRoutes(Javalin app, OllamaController ollamaController, ZentaoController zentaoController, ChatController chatController, com.workassistant.controller.AIController aiController) {
         // Health check endpoint
         app.get("/api/health", ctx -> ctx.json(new HealthResponse("OK", "WorkAssistant is running")));
 
         // Ollama API routes
         app.post("/api/ollama/generate", ollamaController::generate);
+    app.post("/api/ollama/assistant", ollamaController::assistantWithFunctions);
         app.get("/api/ollama/models", ollamaController::listModels);
         app.get("/api/ollama/status", ollamaController::status);
 
@@ -77,6 +79,8 @@ public class WorkAssistantApplication {
         app.get("/api/zentao/tasks", zentaoController::getTasks);
         app.get("/api/zentao/bugs", zentaoController::getBugs);
         app.get("/api/zentao/status", zentaoController::status);
+        // AI function-call endpoint for models/tooling
+    app.post("/api/ai/function-call", aiController::functionCall);
         
         // Chat API routes
         app.post("/api/chat/login", chatController::login);

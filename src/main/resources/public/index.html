@@ -695,17 +695,23 @@
                         
                         if (response.data.success) {
                             const result = response.data.data;
-                            
+
                             // Check if a new channel was created
                             if (result.type === 'channel_created') {
                                 await this.loadChannels();
                                 await this.selectChannel(result.channel);
                             } else {
-                                // Add the new message to the list
-                                this.messages.push(result);
-                                this.$nextTick(() => {
-                                    this.scrollToBottom();
-                                });
+                                // If WebSocket is connected, the server will broadcast the
+                                // message to all clients (including this one), so avoid
+                                // inserting the message locally here to prevent duplicates.
+                                // If WebSocket is not connected, fall back to inserting
+                                // the HTTP response message locally.
+                                if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                                    this.messages.push(result);
+                                    this.$nextTick(() => {
+                                        this.scrollToBottom();
+                                    });
+                                }
                             }
                         }
                     } catch (error) {
