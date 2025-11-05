@@ -38,7 +38,9 @@ Functions provided:
 #### 2. OllamaService Enhancement
 `src/main/java/com/workassistant/service/OllamaService.java`
 
-New method `generateChatWithTools()` that:
+Enhanced with two key methods:
+
+**`generateChatWithTools()`**:
 - Uses Ollama's `/api/chat` endpoint (instead of `/api/generate`)
 - Accepts a `tools` parameter containing function definitions
 - Formats the request according to Ollama's chat API format
@@ -48,6 +50,17 @@ New method `generateChatWithTools()` that:
 OllamaResponse response = ollamaService.generateChatWithTools(prompt, toolsJson);
 ```
 
+**`continueConversationWithFunctionResult()`** (NEW):
+- Sends function execution results back to Ollama
+- Includes full conversation history (user message, assistant tool call, tool result)
+- Receives a natural language response from Ollama
+- Enables regularized, human-readable answers
+
+```java
+OllamaResponse finalResponse = ollamaService.continueConversationWithFunctionResult(
+    originalPrompt, toolCalls, functionResult, toolsJson);
+```
+
 #### 3. ChatController Updates
 `src/main/java/com/workassistant/controller/ChatController.java`
 
@@ -55,7 +68,8 @@ Enhanced AI request handling:
 - Includes Zentao function tools in every AI request
 - Detects when the model wants to call a function
 - Executes the appropriate Zentao function
-- Returns function results to the user
+- **Sends function result back to Ollama for regularization**
+- Returns natural language response to the user
 
 ## Request Format
 
@@ -181,12 +195,68 @@ If Ollama decides to call a function:
 The system:
 1. Detects the function call
 2. Executes `zentaoService.getProjects()`
-3. Returns the results formatted as:
-   ```
-   🔧 **Function Call: get_projects**
-   
-   [Zentao API response here]
-   ```
+3. Sends the function result back to Ollama along with the conversation history
+4. Ollama generates a natural language response based on the function result
+5. Returns the regularized answer to the user
+
+### Function Result Processing (NEW)
+
+After executing a function, the system sends a follow-up request to Ollama with the complete conversation:
+
+**Request to Ollama after function execution:**
+```json
+{
+  "model": "qwen3:8b",
+  "stream": false,
+  "messages": [
+    {
+      "role": "user",
+      "content": "What projects do we have?"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "function": {
+            "name": "get_projects",
+            "arguments": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"projects\":[{\"id\":1,\"name\":\"Project Alpha\"},{\"id\":2,\"name\":\"Project Beta\"}]}"
+    }
+  ],
+  "tools": [...]
+}
+```
+
+**Ollama's Final Response:**
+```json
+{
+  "model": "qwen3:8b",
+  "message": {
+    "role": "assistant",
+    "content": "Based on the data, we currently have 2 active projects: Project Alpha and Project Beta."
+  }
+}
+```
+
+This regularization process ensures that:
+- Raw JSON data is converted to natural language
+- Responses are contextual and conversational
+- Users get easy-to-understand answers
+- The AI can interpret and summarize the data
+
+## Usage Examples
+1. Detects the function call
+2. Executes `zentaoService.getProjects()`
+3. Sends the function result back to Ollama along with the conversation history
+4. Ollama generates a natural language response based on the function result
+5. Returns the regularized answer to the user
 
 ## Usage Examples
 
@@ -200,7 +270,11 @@ The system:
 
 **System executes**: `zentaoService.getProjects()`
 
-**User receives**: Project list from Zentao
+**System sends function result to Ollama**: Full conversation history including function result
+
+**Ollama generates**: Natural language response summarizing the projects
+
+**User receives**: Formatted, readable response like "We have 3 projects: Alpha, Beta, and Gamma..."
 
 ### Example 2: Getting Filtered Tasks
 
@@ -218,7 +292,11 @@ The system:
 
 **System executes**: `zentaoService.getTasks({"assignedTo": "John", "status": "doing"})`
 
-**User receives**: Filtered task list from Zentao
+**System sends function result to Ollama**: Full conversation history including task data
+
+**Ollama generates**: Natural language response interpreting the task data
+
+**User receives**: Human-readable response like "John is currently working on 2 tasks: Task #42 'Implement feature X' and Task #43 'Fix bug Y'..."
 
 ### Example 3: Regular Chat
 
@@ -228,7 +306,7 @@ The system:
 
 **Ollama response**: Regular text response (no function call)
 
-**User receives**: AI's text response
+**User receives**: AI's text response directly (no function execution needed)
 
 ## Testing
 
