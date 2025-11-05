@@ -33,6 +33,11 @@ public class ChatService {
     }
     
     // User management
+    public boolean isNicknameExists(String nickname) {
+        return users.values().stream()
+                .anyMatch(user -> user.getNickname().equalsIgnoreCase(nickname));
+    }
+    
     public User createUser(String nickname) {
         String userId = UUID.randomUUID().toString();
         User user = new User(userId, nickname);
@@ -77,6 +82,16 @@ public class ChatService {
         User user = users.get(userId);
         if (user != null) {
             user.setOnline(online);
+        }
+    }
+    
+    public void removeUser(String userId) {
+        User user = users.remove(userId);
+        if (user != null) {
+            // Remove private channel for this user
+            String privateChannelId = "private-" + userId;
+            channels.remove(privateChannelId);
+            channelMessages.remove(privateChannelId);
         }
     }
     
