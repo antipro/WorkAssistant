@@ -1,6 +1,9 @@
 package com.workassistant.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workassistant.config.AppConfig;
 import com.workassistant.model.OllamaRequest;
 import com.workassistant.model.OllamaResponse;
@@ -110,14 +113,14 @@ public class OllamaService {
         logger.info("Generating completion with model (functions): {}", model);
 
         // Build a dynamic request object to include functions
-        com.fasterxml.jackson.databind.node.ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("model", model);
         root.put("prompt", prompt);
         root.put("stream", false);
 
         if (functionsJson != null && !functionsJson.isEmpty()) {
             try {
-                com.fasterxml.jackson.databind.JsonNode functionsNode = objectMapper.readTree(functionsJson);
+                JsonNode functionsNode = objectMapper.readTree(functionsJson);
                 root.set("functions", functionsNode);
             } catch (Exception e) {
                 logger.warn("Invalid functionsJson provided, ignoring functions field: {}", e.getMessage());
@@ -246,13 +249,13 @@ public class OllamaService {
         logger.info("Generating chat with tools using model: {}", model);
 
         // Build chat request with messages and tools
-        com.fasterxml.jackson.databind.node.ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode root = objectMapper.createObjectNode();
         root.put("model", model);
         root.put("stream", false);
 
         // Create messages array with user message
-        com.fasterxml.jackson.databind.node.ArrayNode messages = objectMapper.createArrayNode();
-        com.fasterxml.jackson.databind.node.ObjectNode userMessage = objectMapper.createObjectNode();
+        ArrayNode messages = objectMapper.createArrayNode();
+        ObjectNode userMessage = objectMapper.createObjectNode();
         userMessage.put("role", "user");
         userMessage.put("content", prompt);
         messages.add(userMessage);
@@ -261,7 +264,7 @@ public class OllamaService {
         // Add tools if provided
         if (toolsJson != null && !toolsJson.isEmpty()) {
             try {
-                com.fasterxml.jackson.databind.JsonNode toolsNode = objectMapper.readTree(toolsJson);
+                JsonNode toolsNode = objectMapper.readTree(toolsJson);
                 root.set("tools", toolsNode);
             } catch (Exception e) {
                 logger.warn("Invalid toolsJson provided, ignoring tools field: {}", e.getMessage());
@@ -288,20 +291,20 @@ public class OllamaService {
             
             // Parse the response to extract the message content
             try {
-                com.fasterxml.jackson.databind.JsonNode responseJson = objectMapper.readTree(responseBody);
-                com.fasterxml.jackson.databind.JsonNode messageNode = responseJson.get("message");
+                JsonNode responseJson = objectMapper.readTree(responseBody);
+                JsonNode messageNode = responseJson.get("message");
                 
                 OllamaResponse ollamaResponse = new OllamaResponse();
                 
                 if (messageNode != null) {
                     // Check if there's a tool_calls field (function call from model)
-                    com.fasterxml.jackson.databind.JsonNode toolCalls = messageNode.get("tool_calls");
+                    JsonNode toolCalls = messageNode.get("tool_calls");
                     if (toolCalls != null && toolCalls.isArray() && toolCalls.size() > 0) {
                         // Model wants to call a function - return tool call info
                         ollamaResponse.setResponse("FUNCTION_CALL: " + toolCalls.toString());
                     } else {
                         // Regular response
-                        com.fasterxml.jackson.databind.JsonNode contentNode = messageNode.get("content");
+                        JsonNode contentNode = messageNode.get("content");
                         if (contentNode != null) {
                             ollamaResponse.setResponse(contentNode.asText());
                         } else {

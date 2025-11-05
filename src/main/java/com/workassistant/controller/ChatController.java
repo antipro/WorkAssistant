@@ -16,6 +16,7 @@ import io.javalin.http.Context;
 import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
 import io.javalin.websocket.WsMessageContext;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -514,7 +515,7 @@ public class ChatController {
             
             // Parse the function call JSON (remove "FUNCTION_CALL:" prefix)
             String functionCallJson = functionCallResponse.substring("FUNCTION_CALL:".length()).trim();
-            com.fasterxml.jackson.databind.JsonNode toolCalls = objectMapper.readTree(functionCallJson);
+            JsonNode toolCalls = objectMapper.readTree(functionCallJson);
             
             if (!toolCalls.isArray() || toolCalls.size() == 0) {
                 Message errorMsg = chatService.sendAIMessage(channelId, 
@@ -526,8 +527,8 @@ public class ChatController {
             }
             
             // Process the first tool call (for simplicity)
-            com.fasterxml.jackson.databind.JsonNode toolCall = toolCalls.get(0);
-            com.fasterxml.jackson.databind.JsonNode functionNode = toolCall.get("function");
+            JsonNode toolCall = toolCalls.get(0);
+            JsonNode functionNode = toolCall.get("function");
             
             if (functionNode == null) {
                 Message errorMsg = chatService.sendAIMessage(channelId, 
@@ -539,7 +540,7 @@ public class ChatController {
             }
             
             String functionName = functionNode.get("name").asText();
-            com.fasterxml.jackson.databind.JsonNode argumentsNode = functionNode.get("arguments");
+            JsonNode argumentsNode = functionNode.get("arguments");
             
             logger.info("AI wants to call function: {} with args: {}", functionName, argumentsNode);
             
@@ -566,7 +567,7 @@ public class ChatController {
     /**
      * Execute the Zentao function based on the function name
      */
-    private String executeFunctionCall(String functionName, com.fasterxml.jackson.databind.JsonNode arguments) {
+    private String executeFunctionCall(String functionName, JsonNode arguments) {
         try {
             switch (functionName) {
                 case "get_projects":
@@ -592,7 +593,7 @@ public class ChatController {
     /**
      * Parse function arguments JSON to a Map
      */
-    private Map<String, String> parseArgumentsToMap(com.fasterxml.jackson.databind.JsonNode arguments) {
+    private Map<String, String> parseArgumentsToMap(JsonNode arguments) {
         Map<String, String> params = new HashMap<>();
         if (arguments != null && arguments.isObject()) {
             arguments.fields().forEachRemaining(entry -> {
