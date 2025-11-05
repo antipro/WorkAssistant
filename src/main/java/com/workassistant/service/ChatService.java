@@ -85,7 +85,7 @@ public class ChatService {
         }
     }
     
-    public void removeUser(String userId) {
+    public synchronized void removeUser(String userId) {
         User user = users.remove(userId);
         if (user != null) {
             // Remove private channel for this user

@@ -483,13 +483,18 @@ public class ChatController {
     public void handleWebSocketClose(WsCloseContext ctx) {
         String userId = ctx.queryParam("userId");
         if (userId != null && !userId.isEmpty()) {
-            userSessions.remove(userId);
-            chatService.removeUser(userId);
+            // Remove session and user atomically
+            removeUserSession(userId);
             logger.info("User disconnected via WebSocket and removed from memory: {}", userId);
             
             // Broadcast user list update to all connected clients
             broadcastUserListUpdate();
         }
+    }
+    
+    private synchronized void removeUserSession(String userId) {
+        userSessions.remove(userId);
+        chatService.removeUser(userId);
     }
     
     private void broadcastUserListUpdate() {
