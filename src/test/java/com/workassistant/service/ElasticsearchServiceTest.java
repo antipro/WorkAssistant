@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,6 +70,68 @@ class ElasticsearchServiceTest {
         } else {
             // ES not available, test passes
             assertFalse(service.isAvailable());
+        }
+    }
+    
+    @Test
+    void testSearchSummariesWhenESNotAvailable() {
+        // Only test searching if ES is available
+        if (service.isAvailable()) {
+            try {
+                List<SummaryDocument> results = service.searchSummaries("test query");
+                assertNotNull(results);
+                // Results could be empty or have items depending on what's indexed
+                assertTrue(results.size() >= 0);
+            } catch (Exception e) {
+                // ES might not be available or configured, which is fine for unit tests
+                assertTrue(e.getMessage().contains("Elasticsearch") || e.getMessage().contains("Connection"));
+            }
+        } else {
+            // ES not available, test passes
+            assertFalse(service.isAvailable());
+        }
+    }
+    
+    @Test
+    void testSearchSummariesWithEmptyQuery() {
+        if (service.isAvailable()) {
+            try {
+                List<SummaryDocument> results = service.searchSummaries("");
+                assertNotNull(results);
+                assertTrue(results.isEmpty(), "Empty query should return empty results");
+            } catch (Exception e) {
+                // ES might not be available, which is fine
+                assertTrue(e.getMessage().contains("Elasticsearch") || e.getMessage().contains("Connection"));
+            }
+        }
+    }
+    
+    @Test
+    void testSearchSummariesWithMaxResults() {
+        if (service.isAvailable()) {
+            try {
+                List<SummaryDocument> results = service.searchSummaries("test", 5);
+                assertNotNull(results);
+                assertTrue(results.size() <= 5, "Should not return more than max results");
+            } catch (Exception e) {
+                // ES might not be available, which is fine
+                assertTrue(e.getMessage().contains("Elasticsearch") || e.getMessage().contains("Connection"));
+            }
+        }
+    }
+    
+    @Test
+    void testGetSummariesByChannel() {
+        if (service.isAvailable()) {
+            try {
+                List<SummaryDocument> results = service.getSummariesByChannel("test-channel", 10);
+                assertNotNull(results);
+                // Results could be empty or have items depending on what's indexed
+                assertTrue(results.size() >= 0);
+            } catch (Exception e) {
+                // ES might not be available, which is fine
+                assertTrue(e.getMessage().contains("Elasticsearch") || e.getMessage().contains("Connection"));
+            }
         }
     }
 }

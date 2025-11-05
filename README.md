@@ -138,6 +138,29 @@ The summary will be indexed in Elasticsearch with:
 - **Keywords**: Comma-separated keywords
 - **Metadata**: Channel ID, User ID, and timestamp
 
+#### AI Search Feature
+
+When you mention `@eking` with keywords like "search", "find", or "look for", the AI will:
+1. Extract keywords from your query
+2. Search Elasticsearch for matching summaries
+3. Return results in a formatted markdown response with:
+   - Title and content preview
+   - Keywords for each result
+   - Timestamp of creation
+4. If no results are found, the AI will provide a helpful response
+
+Example:
+```
+@eking search project architecture
+@eking find discussions about testing
+```
+
+The search feature supports:
+- **Multi-field search**: Searches across title, content, and keywords
+- **Keyword boosting**: Title and keywords are weighted higher in search
+- **IK Analyzer**: For Chinese text analysis (if IK plugin is installed)
+- **Relevance ranking**: Results ordered by relevance
+
 For detailed chat documentation, see [CHAT.md](CHAT.md).
 
 ## API Endpoints

@@ -197,8 +197,17 @@ public class ChatController {
                     || prompt.toLowerCase().contains("summarize") 
                     || prompt.toLowerCase().contains("summarise");
                 
-                if (isSummaryRequest) {
+                // Check if user wants to search (contains "search", "find", or "look for")
+                boolean isSearchRequest = prompt.toLowerCase().contains("search") 
+                    || prompt.toLowerCase().contains("find") 
+                    || prompt.toLowerCase().contains("look for")
+                    || prompt.toLowerCase().contains("查找")
+                    || prompt.toLowerCase().contains("搜索");
+                
+                if (isSummaryRequest && !isSearchRequest) {
                     handleSummaryRequest(channelId, prompt, userMessage);
+                } else if (isSearchRequest) {
+                    handleSearchRequest(channelId, prompt, userMessage);
                 } else {
                     // Regular chat response
                     String aiResponse = ollamaService.generateSimple(prompt);
@@ -294,5 +303,96 @@ public class ChatController {
         
         String docId = UUID.randomUUID().toString();
         return new SummaryDocument(docId, title, content, keywords, channelId, userId);
+    }
+    
+    private void handleSearchRequest(String channelId, String prompt, Message userMessage) {
+        try {
+            // Check if Elasticsearch is available
+            if (!elasticsearchService.isAvailable()) {
+                chatService.sendAIMessage(channelId, 
+                    "⚠️ Sorry, the search service is not available. Elasticsearch is not connected.");
+                logger.warn("Search request received but Elasticsearch is not available");
+                return;
+            }
+            
+            // Extract search keywords from the prompt
+            String searchQuery = extractSearchKeywords(prompt);
+            
+            if (searchQuery.isEmpty()) {
+                chatService.sendAIMessage(channelId, 
+                    "Please provide keywords to search. For example: '@eking search project architecture'");
+                return;
+            }
+            
+            // Search Elasticsearch for matching summaries
+            List<SummaryDocument> results = elasticsearchService.searchSummaries(searchQuery, 5);
+            
+            if (results.isEmpty()) {
+                // If no results from ES, try to get AI to help
+                String aiResponse = ollamaService.generateSimple(
+                    "User is asking about: " + searchQuery + ". No previous summaries found. Provide a helpful response.");
+                chatService.sendAIMessage(channelId, 
+                    "🔍 No previous summaries found for: **" + searchQuery + "**\n\n" + aiResponse);
+            } else {
+                // Format results in markdown
+                String formattedResults = formatSearchResults(searchQuery, results);
+                chatService.sendAIMessage(channelId, formattedResults);
+                logger.info("Search results sent for query: {} - {} results", searchQuery, results.size());
+            }
+        } catch (Exception e) {
+            logger.error("Error handling search request", e);
+            chatService.sendAIMessage(channelId, 
+                "Sorry, I encountered an error while searching. Please try again later.");
+        }
+    }
+    
+    /**
+     * Extract search keywords from the prompt
+     * Removes common search words like "search", "find", "look for"
+     */
+    private String extractSearchKeywords(String prompt) {
+        String cleaned = prompt.toLowerCase()
+            .replaceAll("\\b(search|find|look for|about|查找|搜索)\\b", "")
+            .replaceAll("\\s+", " ")
+            .trim();
+        return cleaned;
+    }
+    
+    /**
+     * Format search results in markdown
+     */
+    private String formatSearchResults(String query, List<SummaryDocument> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("🔍 **Search Results for: ").append(query).append("**\n\n");
+        sb.append("Found ").append(results.size()).append(" matching ");
+        sb.append(results.size() == 1 ? "summary" : "summaries").append(":\n\n");
+        sb.append("---\n\n");
+        
+        int count = 1;
+        for (SummaryDocument doc : results) {
+            sb.append("### ").append(count).append(". ").append(doc.getTitle()).append("\n\n");
+            
+            // Add a snippet of the content (first 300 characters)
+            String content = doc.getContent();
+            if (content.length() > 300) {
+                content = content.substring(0, 300) + "...";
+            }
+            sb.append(content).append("\n\n");
+            
+            // Add keywords if available
+            if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
+                sb.append("**Keywords:** ").append(String.join(", ", doc.getKeywords())).append("\n\n");
+            }
+            
+            // Add metadata
+            sb.append("*Created: ").append(doc.getTimestamp()).append("*\n\n");
+            
+            if (count < results.size()) {
+                sb.append("---\n\n");
+            }
+            count++;
+        }
+        
+        return sb.toString();
     }
 }
