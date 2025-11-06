@@ -548,9 +548,11 @@ public class ChatController {
             String functionResult = executeFunctionCall(functionName, argumentsNode);
             
             // Send the function result back to Ollama to get a regularized natural language response
+            // Decode any unicode escape sequences (e.g., "\u6cb3\u5317") to original characters
+            String decodedFunctionResult = decodeUnicodeEscapes(functionResult != null ? functionResult : "");
             String zentaoTools = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
             OllamaResponse finalResponse = ollamaService.continueConversationWithFunctionResult(
-                originalPrompt, toolCalls, functionResult, zentaoTools);
+                originalPrompt, toolCalls, decodedFunctionResult, zentaoTools);
             
             // Send the regularized AI response to the user
             String regularizedAnswer = finalResponse.getResponse();
@@ -711,6 +713,31 @@ public class ChatController {
         } catch (Exception e) {
             logger.error("Error broadcasting user list update", e);
         }
+    }
+
+    /**
+     * Decode unicode escape sequences like "\u6cb3\u5317" into actual characters.
+     */
+    private String decodeUnicodeEscapes(String input) {
+        if (input == null || input.isEmpty()) return input;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < input.length();) {
+            char c = input.charAt(i);
+            if (c == '\\' && i + 5 < input.length() && input.charAt(i + 1) == 'u') {
+                String hex = input.substring(i + 2, i + 6);
+                try {
+                    int code = Integer.parseInt(hex, 16);
+                    sb.append((char) code);
+                    i += 6;
+                    continue;
+                } catch (NumberFormatException ignored) {
+                    // fall through and append raw chars
+                }
+            }
+            sb.append(c);
+            i++;
+        }
+        return sb.toString();
     }
 
     private List<Map<String, Object>> buildPersonalizedUserList(List<User> users, String currentUserId) {
