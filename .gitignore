@@ -37,3 +37,6 @@ Thumbs.db
 # Application
 application.properties
 !application.properties.example
+
+# Work directory - uploaded images and data
+work/

@@ -89,6 +89,8 @@ public class WorkAssistantApplication {
         app.post("/api/chat/channels", chatController::createChannel);
         app.get("/api/chat/channels/{channelId}/messages", chatController::getMessages);
         app.post("/api/chat/messages", chatController::sendMessage);
+        app.post("/api/chat/clipboard", chatController::sendClipboardContent);
+        app.get("/api/chat/images/{imagePath}", chatController::serveImage);
         
         // WebSocket route
         app.ws("/ws/chat", ws -> {
