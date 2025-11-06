@@ -7,11 +7,14 @@ import com.workassistant.model.User;
 import com.workassistant.model.JobType;
 import com.workassistant.model.SummaryDocument;
 import com.workassistant.model.OllamaResponse;
+import com.workassistant.model.ClipboardData;
+import com.workassistant.model.ClipboardContentDocument;
 import com.workassistant.service.ChatService;
 import com.workassistant.service.OllamaService;
 import com.workassistant.service.ElasticsearchService;
 import com.workassistant.service.ZentaoFunctionProvider;
 import com.workassistant.service.ZentaoService;
+import com.workassistant.service.OCRService;
 import io.javalin.http.Context;
 import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
@@ -40,11 +43,13 @@ import java.util.regex.Pattern;
 public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
     private static final int MIN_KEYWORD_LENGTH = 3;
+    private static final String WORK_IMAGES_DIR = "work/images";
     
     private final ChatService chatService;
     private final OllamaService ollamaService;
     private final ZentaoService zentaoService;
     private final ElasticsearchService elasticsearchService;
+    private final OCRService ocrService;
     private final ExecutorService aiExecutor;
     private final ScheduledExecutorService sessionCleanup;
     private final Map<String, java.util.concurrent.atomic.AtomicInteger> sessionCounts;
@@ -57,6 +62,7 @@ public class ChatController {
         this.ollamaService = ollamaService;
         this.zentaoService = new ZentaoService();
         this.elasticsearchService = ElasticsearchService.getInstance();
+        this.ocrService = OCRService.getInstance();
         this.aiExecutor = Executors.newFixedThreadPool(5);
     this.sessionCleanup = Executors.newSingleThreadScheduledExecutor();
     this.sessionCounts = new ConcurrentHashMap<>();
@@ -66,6 +72,9 @@ public class ChatController {
     this.objectMapper.registerModule(new JavaTimeModule());
     // Write dates as ISO-8601 strings instead of timestamps
     this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        
+        // Create work images directory
+        createWorkImagesDirectory();
     }
 
     public void login(Context ctx) {
@@ -238,6 +247,10 @@ public class ChatController {
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         map.put("timestamp", ts);
         map.put("type", m.getType().name());
+        map.put("contentType", m.getContentType() != null ? m.getContentType().name() : "TEXT");
+        if (m.getClipboardData() != null) {
+            map.put("clipboardData", m.getClipboardData());
+        }
         return map;
     }
 
@@ -836,5 +849,314 @@ public class ChatController {
         } catch (Exception e) {
             logger.error("Error broadcasting message", e);
         }
+    }
+    
+    /**
+     * Create work images directory if it doesn't exist
+     */
+    private void createWorkImagesDirectory() {
+        try {
+            java.io.File dir = new java.io.File(WORK_IMAGES_DIR);
+            if (!dir.exists()) {
+                dir.mkdirs();
+                logger.info("Created work images directory: {}", WORK_IMAGES_DIR);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to create work images directory", e);
+        }
+    }
+    
+    /**
+     * Handle clipboard content submission
+     */
+    public void sendClipboardContent(Context ctx) {
+        try {
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            String channelId = (String) body.get("channelId");
+            String userId = (String) body.get("userId");
+            Map<String, Object> contentMap = (Map<String, Object>) body.get("content");
+            
+            if (channelId == null || userId == null || contentMap == null) {
+                ctx.json(ApiResponse.error("Channel ID, user ID, and content are required"));
+                return;
+            }
+            
+            // Parse clipboard content
+            ClipboardData clipboardData = parseClipboardContent(contentMap);
+            
+            // Send initial message
+            Message message = chatService.sendClipboardMessage(channelId, userId, clipboardData);
+            if (message == null) {
+                ctx.json(ApiResponse.error("Failed to send clipboard content"));
+                return;
+            }
+            
+            // Broadcast message to all connected clients
+            broadcastMessage(message);
+            
+            // Process clipboard content asynchronously
+            processClipboardContent(channelId, userId, message.getId(), clipboardData);
+            
+            ctx.json(ApiResponse.success(convertMessageToMap(message)));
+        } catch (Exception e) {
+            logger.error("Error sending clipboard content", e);
+            ctx.json(ApiResponse.error("Failed to send clipboard content: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Parse clipboard content from request
+     */
+    private ClipboardData parseClipboardContent(Map<String, Object> contentMap) throws Exception {
+        ClipboardData data = new ClipboardData();
+        
+        // Parse text
+        if (contentMap.containsKey("text")) {
+            data.setText((String) contentMap.get("text"));
+        }
+        
+        // Parse images
+        if (contentMap.containsKey("images")) {
+            List<Map<String, String>> imagesList = (List<Map<String, String>>) contentMap.get("images");
+            for (Map<String, String> imageMap : imagesList) {
+                String base64Data = imageMap.get("data");
+                String type = imageMap.get("type");
+                
+                // Save image and get path
+                String imagePath = saveBase64Image(base64Data, type);
+                
+                ClipboardData.ClipboardImage image = new ClipboardData.ClipboardImage();
+                image.setPath(imagePath);
+                image.setType(type);
+                data.addImage(image);
+            }
+        }
+        
+        return data;
+    }
+    
+    /**
+     * Save base64 encoded image to disk
+     */
+    private String saveBase64Image(String base64Data, String type) throws Exception {
+        // Remove data URI prefix if present
+        String base64Image = base64Data;
+        if (base64Image.contains(",")) {
+            base64Image = base64Image.split(",")[1];
+        }
+        
+        // Decode base64
+        byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
+        
+        // Generate unique filename
+        String extension = type.split("/")[1];
+        String filename = UUID.randomUUID().toString() + "." + extension;
+        String relativePath = filename;
+        String fullPath = WORK_IMAGES_DIR + "/" + filename;
+        
+        // Save to disk
+        java.io.File outputFile = new java.io.File(fullPath);
+        java.nio.file.Files.write(outputFile.toPath(), imageBytes);
+        
+        logger.info("Saved image: {}", fullPath);
+        return relativePath;
+    }
+    
+    /**
+     * Serve image files
+     */
+    public void serveImage(Context ctx) {
+        try {
+            String imagePath = ctx.pathParam("imagePath");
+            String fullPath = WORK_IMAGES_DIR + "/" + imagePath;
+            
+            java.io.File imageFile = new java.io.File(fullPath);
+            if (!imageFile.exists()) {
+                ctx.status(404).result("Image not found");
+                return;
+            }
+            
+            // Determine content type from file extension
+            String contentType = "image/jpeg";
+            if (imagePath.endsWith(".png")) {
+                contentType = "image/png";
+            } else if (imagePath.endsWith(".gif")) {
+                contentType = "image/gif";
+            } else if (imagePath.endsWith(".webp")) {
+                contentType = "image/webp";
+            }
+            
+            byte[] imageBytes = java.nio.file.Files.readAllBytes(imageFile.toPath());
+            ctx.contentType(contentType).result(imageBytes);
+        } catch (Exception e) {
+            logger.error("Error serving image", e);
+            ctx.status(500).result("Failed to serve image");
+        }
+    }
+    
+    /**
+     * Process clipboard content asynchronously
+     * - Perform OCR on images to extract keywords
+     * - Generate AI title
+     * - Store in Elasticsearch
+     */
+    private void processClipboardContent(String channelId, String userId, String messageId, ClipboardData clipboardData) {
+        aiExecutor.submit(() -> {
+            try {
+                logger.info("Processing clipboard content for message: {}", messageId);
+                
+                // Extract OCR keywords from images
+                List<ClipboardContentDocument.ImageMetadata> imageMetadataList = new ArrayList<>();
+                List<String> allKeywords = new ArrayList<>();
+                
+                if (clipboardData.getImages() != null) {
+                    for (ClipboardData.ClipboardImage img : clipboardData.getImages()) {
+                        if (ocrService.isAvailable()) {
+                            String imagePath = WORK_IMAGES_DIR + "/" + img.getPath();
+                            java.io.File imageFile = new java.io.File(imagePath);
+                            
+                            if (imageFile.exists()) {
+                                List<String> keywords = ocrService.extractKeywords(imageFile);
+                                img.setKeywords(keywords);
+                                allKeywords.addAll(keywords);
+                                
+                                ClipboardContentDocument.ImageMetadata metadata = 
+                                    new ClipboardContentDocument.ImageMetadata(img.getPath(), keywords);
+                                imageMetadataList.add(metadata);
+                                
+                                logger.info("Extracted {} keywords from image: {}", keywords.size(), img.getPath());
+                            }
+                        }
+                    }
+                }
+                
+                // Extract keywords from text if available
+                if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
+                    String[] words = clipboardData.getText().toLowerCase()
+                        .replaceAll("[^a-zA-Z0-9\\s]", " ")
+                        .split("\\s+");
+                    
+                    for (String word : words) {
+                        if (word.length() > MIN_KEYWORD_LENGTH) {
+                            allKeywords.add(word);
+                        }
+                    }
+                }
+                
+                // Generate AI title
+                String title = generateClipboardTitle(clipboardData, allKeywords);
+                
+                // Create document for Elasticsearch
+                ClipboardContentDocument document = new ClipboardContentDocument(
+                    UUID.randomUUID().toString(),
+                    title,
+                    clipboardData.getText(),
+                    imageMetadataList,
+                    allKeywords,
+                    channelId,
+                    userId
+                );
+                
+                // Store in Elasticsearch if available
+                if (elasticsearchService.isAvailable()) {
+                    try {
+                        elasticsearchService.indexClipboardContent(document);
+                        
+                        // Send confirmation message
+                        String confirmMsg = "✅ Clipboard content processed and stored!\n\n" +
+                            "**Title:** " + title + "\n" +
+                            "**Text:** " + (clipboardData.getText() != null && !clipboardData.getText().isEmpty() ? "Yes" : "No") + "\n" +
+                            "**Images:** " + (clipboardData.getImages() != null ? clipboardData.getImages().size() : 0) + "\n" +
+                            "**Keywords:** " + allKeywords.size();
+                        
+                        Message aiMessage = chatService.sendAIMessage(channelId, confirmMsg);
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                        
+                        logger.info("Clipboard content indexed: {}", document.getId());
+                    } catch (Exception e) {
+                        logger.error("Failed to index clipboard content", e);
+                        Message errorMsg = chatService.sendAIMessage(channelId, 
+                            "⚠️ Clipboard content processed but failed to store in Elasticsearch.");
+                        if (errorMsg != null) {
+                            broadcastMessage(errorMsg);
+                        }
+                    }
+                } else {
+                    logger.warn("Elasticsearch not available for clipboard content");
+                    Message warningMsg = chatService.sendAIMessage(channelId, 
+                        "⚠️ Clipboard content processed but Elasticsearch is not available for storage.");
+                    if (warningMsg != null) {
+                        broadcastMessage(warningMsg);
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Error processing clipboard content", e);
+                Message errorMsg = chatService.sendAIMessage(channelId, 
+                    "❌ Error processing clipboard content: " + e.getMessage());
+                if (errorMsg != null) {
+                    broadcastMessage(errorMsg);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Generate AI title for clipboard content
+     */
+    private String generateClipboardTitle(ClipboardData clipboardData, List<String> keywords) {
+        try {
+            StringBuilder prompt = new StringBuilder("Generate a short, descriptive title (max 10 words) for the following content:\n\n");
+            
+            if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
+                String text = clipboardData.getText();
+                if (text.length() > 500) {
+                    text = text.substring(0, 500) + "...";
+                }
+                prompt.append("Text: ").append(text).append("\n\n");
+            }
+            
+            if (clipboardData.getImages() != null && !clipboardData.getImages().isEmpty()) {
+                prompt.append("Images: ").append(clipboardData.getImages().size()).append("\n\n");
+            }
+            
+            if (!keywords.isEmpty()) {
+                prompt.append("Keywords: ").append(String.join(", ", keywords.subList(0, Math.min(10, keywords.size())))).append("\n\n");
+            }
+            
+            prompt.append("Reply with ONLY the title, nothing else.");
+            
+            String aiResponse = ollamaService.generateSimple(prompt.toString());
+            
+            // Clean up the response
+            String title = cleanAITitle(aiResponse);
+            
+            return title.isEmpty() ? "Clipboard Content" : title;
+        } catch (Exception e) {
+            logger.error("Failed to generate AI title", e);
+            return "Clipboard Content";
+        }
+    }
+    
+    /**
+     * Clean AI-generated title by removing quotes, prefixes, and extra content
+     */
+    private String cleanAITitle(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return "";
+        }
+        
+        String title = aiResponse.trim()
+            .replaceAll("^[\"']|[\"']$", "")  // Remove leading/trailing quotes
+            .replaceAll("Title:\\s*", "")      // Remove "Title:" prefix
+            .replaceAll("\\n.*", "");          // Remove everything after first newline
+        
+        // Truncate if too long
+        if (title.length() > 100) {
+            title = title.substring(0, 97) + "...";
+        }
+        
+        return title;
     }
 }

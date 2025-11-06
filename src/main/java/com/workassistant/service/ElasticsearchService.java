@@ -14,6 +14,7 @@ import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
 import com.workassistant.config.AppConfig;
 import com.workassistant.model.SummaryDocument;
+import com.workassistant.model.ClipboardContentDocument;
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
 import org.slf4j.Logger;
@@ -241,6 +242,87 @@ public class ElasticsearchService {
         
         logger.info("Indexed document: {} with result: {}", document.getId(), response.result());
         return response.id();
+    }
+
+    /**
+     * Index clipboard content document in Elasticsearch
+     */
+    public String indexClipboardContent(ClipboardContentDocument document) throws IOException {
+        // Use a separate index for clipboard content
+        String clipboardIndex = indexName + "_clipboard";
+        
+        // Create index if it doesn't exist
+        try {
+            boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(clipboardIndex))).value();
+            if (!exists) {
+                createClipboardContentIndex(clipboardIndex);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not check/create clipboard index: {}", e.getMessage());
+        }
+        
+        IndexResponse response = client.index(IndexRequest.of(i -> i
+            .index(clipboardIndex)
+            .id(document.getId())
+            .document(document)
+        ));
+        
+        logger.info("Indexed clipboard content: {} with result: {}", document.getId(), response.result());
+        return response.id();
+    }
+
+    /**
+     * Create index for clipboard content with proper mappings
+     */
+    private void createClipboardContentIndex(String indexName) throws IOException {
+        TypeMapping mapping = TypeMapping.of(tm -> tm
+            .properties("title", Property.of(p -> p
+                .text(t -> t
+                    .analyzer("ik_max_word")
+                    .searchAnalyzer("ik_smart")
+                )
+            ))
+            .properties("text", Property.of(p -> p
+                .text(t -> t
+                    .analyzer("ik_max_word")
+                    .searchAnalyzer("ik_smart")
+                )
+            ))
+            .properties("keywords", Property.of(p -> p
+                .text(t -> t
+                    .analyzer("ik_max_word")
+                    .searchAnalyzer("ik_smart")
+                )
+            ))
+            .properties("timestamp", Property.of(p -> p
+                .date(d -> d)
+            ))
+            .properties("channelId", Property.of(p -> p
+                .keyword(k -> k)
+            ))
+            .properties("userId", Property.of(p -> p
+                .keyword(k -> k)
+            ))
+            .properties("images", Property.of(p -> p
+                .nested(n -> n
+                    .properties("path", Property.of(pp -> pp.keyword(k -> k)))
+                    .properties("keywords", Property.of(pp -> pp
+                        .text(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart")
+                        )
+                    ))
+                )
+            ))
+        );
+
+        CreateIndexRequest request = CreateIndexRequest.of(c -> c
+            .index(indexName)
+            .mappings(mapping)
+        );
+
+        client.indices().create(request);
+        logger.info("Created clipboard content index: {}", indexName);
     }
 
     /**
