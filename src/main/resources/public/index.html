@@ -231,6 +231,31 @@
             line-height: 1.5;
         }
 
+        .clipboard-text {
+            margin-bottom: 10px;
+            white-space: pre-wrap;
+        }
+
+        .clipboard-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .clipboard-image {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .clipboard-image:hover {
+            transform: scale(1.05);
+        }
+
         .message-input-area {
             padding: 15px 20px;
             background: white;
@@ -256,6 +281,21 @@
         .message-input:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .clipboard-btn {
+            padding: 12px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2em;
+            transition: all 0.3s;
+        }
+
+        .clipboard-btn:hover {
+            background: #45a049;
         }
 
         .send-btn {
@@ -417,7 +457,22 @@
                                 </span>
                                 <span class="message-time">{{ formatTime(message.timestamp) }}</span>
                             </div>
-                            <div class="message-content">{{ message.content }}</div>
+                            <div class="message-content">
+                                <div v-if="message.contentType === 'CLIPBOARD' && message.clipboardData">
+                                    <div v-if="message.clipboardData.text" class="clipboard-text">
+                                        {{ message.clipboardData.text }}
+                                    </div>
+                                    <div v-if="message.clipboardData.images && message.clipboardData.images.length > 0" class="clipboard-images">
+                                        <img v-for="(img, idx) in message.clipboardData.images" 
+                                             :key="idx" 
+                                             :src="'/api/chat/images/' + img.path" 
+                                             :alt="'Image ' + (idx + 1)"
+                                             class="clipboard-image"
+                                             @error="handleImageError">
+                                    </div>
+                                </div>
+                                <div v-else>{{ message.content }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -426,16 +481,19 @@
                         <textarea 
                             class="message-input" 
                             v-model="messageText"
-                            @keydown.enter.exact.prevent=""
-                            @keydown.enter.shift.prevent="sendMessage"
+                            @keydown.enter.ctrl.exact.prevent="sendMessage"
+                            @keydown.enter.meta.exact.prevent="sendMessage"
                             placeholder="Type a message... Use @eking to mention AI, #channelname to create a channel"
                         ></textarea>
+                        <button class="clipboard-btn" @click="pasteFromClipboard" title="Paste from clipboard (Ctrl+V)">
+                            📋
+                        </button>
                         <button class="send-btn" @click="sendMessage" :disabled="!messageText.trim() || sending">
                             {{ sending ? '...' : 'Send' }}
                         </button>
                     </div>
                     <div class="input-hint">
-                        💡 Tip: Press Shift+Enter to send. Type #channelname to create a new channel, @eking to call AI assistant
+                        💡 Tip: Press Ctrl+Enter (Cmd+Enter on Mac) to send. Click 📋 to paste from clipboard. Type #channelname to create a new channel, @eking to call AI assistant
                     </div>
                 </div>
             </div>
@@ -722,6 +780,77 @@
                     }
                 },
                 
+                async pasteFromClipboard() {
+                    if (!this.currentChannel) {
+                        alert('Please select a channel first');
+                        return;
+                    }
+                    
+                    try {
+                        const clipboardItems = await navigator.clipboard.read();
+                        const content = {
+                            text: '',
+                            images: []
+                        };
+                        
+                        for (const item of clipboardItems) {
+                            // Handle text
+                            if (item.types.includes('text/plain')) {
+                                const blob = await item.getType('text/plain');
+                                const text = await blob.text();
+                                content.text = text;
+                            }
+                            
+                            // Handle images
+                            for (const type of item.types) {
+                                if (type.startsWith('image/')) {
+                                    const blob = await item.getType(type);
+                                    // Convert blob to base64
+                                    const reader = new FileReader();
+                                    const base64Promise = new Promise((resolve) => {
+                                        reader.onloadend = () => resolve(reader.result);
+                                        reader.readAsDataURL(blob);
+                                    });
+                                    const base64 = await base64Promise;
+                                    content.images.push({
+                                        data: base64,
+                                        type: type
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Send clipboard content to server
+                        if (content.text || content.images.length > 0) {
+                            this.sending = true;
+                            try {
+                                const response = await axios.post('/api/chat/clipboard', {
+                                    channelId: this.currentChannel.id,
+                                    userId: this.currentUser.id,
+                                    content: content
+                                });
+                                
+                                if (response.data.success) {
+                                    // Message will be broadcast via WebSocket or polling
+                                    console.log('Clipboard content sent successfully');
+                                } else {
+                                    alert('Failed to send clipboard content: ' + response.data.message);
+                                }
+                            } catch (error) {
+                                console.error('Failed to send clipboard content:', error);
+                                alert('Failed to send clipboard content. Please try again.');
+                            } finally {
+                                this.sending = false;
+                            }
+                        } else {
+                            alert('Clipboard is empty or contains unsupported content');
+                        }
+                    } catch (error) {
+                        console.error('Failed to read clipboard:', error);
+                        alert('Failed to access clipboard. Please make sure you have granted clipboard permission.');
+                    }
+                },
+                
                 startPolling() {
                     // Poll for new messages and users every 2 seconds
                     // Only poll if not already polling
@@ -745,6 +874,11 @@
                     if (this.$refs.messagesArea) {
                         this.$refs.messagesArea.scrollTop = this.$refs.messagesArea.scrollHeight;
                     }
+                },
+                
+                handleImageError(event) {
+                    console.error('Failed to load image:', event.target.src);
+                    event.target.style.display = 'none';
                 },
                 
                 formatTime(timestamp) {

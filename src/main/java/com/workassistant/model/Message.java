@@ -13,12 +13,20 @@ public class Message {
     private String content;
     private LocalDateTime timestamp;
     private MessageType type;
+    private ContentType contentType;
+    private ClipboardData clipboardData;
 
     public enum MessageType {
         USER, SYSTEM, AI
     }
 
+    public enum ContentType {
+        TEXT,           // Regular text message
+        CLIPBOARD       // Clipboard content with text and/or images
+    }
+
     public Message() {
+        this.contentType = ContentType.TEXT;
     }
 
     public Message(String id, String channelId, String userId, String username, String content, MessageType type) {
@@ -29,6 +37,7 @@ public class Message {
         this.content = content;
         this.timestamp = LocalDateTime.now();
         this.type = type;
+        this.contentType = ContentType.TEXT;
     }
 
     public String getId() {
@@ -86,4 +95,21 @@ public class Message {
     public void setType(MessageType type) {
         this.type = type;
     }
+
+    public ContentType getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(ContentType contentType) {
+        this.contentType = contentType;
+    }
+
+    public ClipboardData getClipboardData() {
+        return clipboardData;
+    }
+
+    public void setClipboardData(ClipboardData clipboardData) {
+        this.clipboardData = clipboardData;
+    }
 }
+

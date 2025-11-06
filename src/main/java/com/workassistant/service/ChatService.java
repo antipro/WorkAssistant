@@ -152,6 +152,44 @@ public class ChatService {
         return message;
     }
     
+    public Message sendClipboardMessage(String channelId, String userId, com.workassistant.model.ClipboardData clipboardData) {
+        User user = users.get(userId);
+        if (user == null) {
+            return null;
+        }
+        
+        String messageId = UUID.randomUUID().toString();
+        Message message = new Message();
+        message.setId(messageId);
+        message.setChannelId(channelId);
+        message.setUserId(userId);
+        message.setUsername(user.getNickname());
+        message.setType(Message.MessageType.USER);
+        message.setContentType(Message.ContentType.CLIPBOARD);
+        message.setClipboardData(clipboardData);
+        message.setTimestamp(java.time.LocalDateTime.now());
+        
+        // Set content as a summary text
+        StringBuilder contentSummary = new StringBuilder();
+        if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
+            contentSummary.append(clipboardData.getText().length() > 100 
+                ? clipboardData.getText().substring(0, 100) + "..." 
+                : clipboardData.getText());
+        }
+        if (clipboardData.getImages() != null && !clipboardData.getImages().isEmpty()) {
+            if (contentSummary.length() > 0) contentSummary.append(" ");
+            contentSummary.append("[").append(clipboardData.getImages().size()).append(" image(s)]");
+        }
+        message.setContent(contentSummary.toString());
+        
+        List<Message> messages = channelMessages.get(channelId);
+        if (messages != null) {
+            messages.add(message);
+        }
+        
+        return message;
+    }
+    
     public List<Message> getChannelMessages(String channelId) {
         return channelMessages.getOrDefault(channelId, new ArrayList<>());
     }
