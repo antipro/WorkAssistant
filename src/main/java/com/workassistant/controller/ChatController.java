@@ -451,13 +451,19 @@ public class ChatController {
                     broadcastMessage(aiMessage);
                 }
             } else {
-                // Format results in markdown
-                String formattedResults = formatSearchResults(searchQuery, results);
-                Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                // Process search results through AI model before sending to user
+                String rawResults = formatSearchResultsForAI(searchQuery, results);
+                String aiPrompt = "Based on the user's search query: \"" + searchQuery + "\"\n\n" +
+                    "Here are the search results from the knowledge base:\n\n" + rawResults + "\n\n" +
+                    "Please provide a helpful, natural language response that summarizes these results and answers the user's query. " +
+                    "Include relevant details and format the response in a clear, readable way.";
+                
+                String aiProcessedResponse = ollamaService.generateSimple(aiPrompt);
+                Message aiMessage = chatService.sendAIMessage(channelId, aiProcessedResponse);
                 if (aiMessage != null) {
                     broadcastMessage(aiMessage);
                 }
-                logger.info("Search results sent for query: {} - {} results", searchQuery, results.size());
+                logger.info("Search results processed by AI and sent for query: {} - {} results", searchQuery, results.size());
             }
         } catch (Exception e) {
             logger.error("Error handling search request", e);
@@ -513,6 +519,34 @@ public class ChatController {
             if (count < results.size()) {
                 sb.append("---\n\n");
             }
+            count++;
+        }
+        
+        return sb.toString();
+    }
+    
+    /**
+     * Format search results for AI processing (more structured format)
+     */
+    private String formatSearchResultsForAI(String query, List<SummaryDocument> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Found ").append(results.size()).append(" matching ");
+        sb.append(results.size() == 1 ? "document" : "documents").append(":\n\n");
+        
+        int count = 1;
+        for (SummaryDocument doc : results) {
+            sb.append("Document ").append(count).append(":\n");
+            sb.append("Title: ").append(doc.getTitle()).append("\n");
+            sb.append("Content: ").append(doc.getContent()).append("\n");
+            
+            // Add keywords if available
+            if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
+                sb.append("Keywords: ").append(String.join(", ", doc.getKeywords())).append("\n");
+            }
+            
+            // Add timestamp
+            sb.append("Created: ").append(doc.getTimestamp()).append("\n");
+            sb.append("\n");
             count++;
         }
         
