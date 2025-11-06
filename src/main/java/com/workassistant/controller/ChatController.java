@@ -451,13 +451,42 @@ public class ChatController {
                     broadcastMessage(aiMessage);
                 }
             } else {
-                // Format results in markdown
-                String formattedResults = formatSearchResults(searchQuery, results);
-                Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
-                if (aiMessage != null) {
-                    broadcastMessage(aiMessage);
+                // Process search results through AI model before sending to user
+                try {
+                    String rawResults = formatSearchResultsForAI(searchQuery, results);
+                    // Sanitize search query to prevent prompt injection
+                    String sanitizedQuery = searchQuery.replaceAll("[\\r\\n]", " ").trim();
+                    String aiPrompt = "Based on the user's search query: \"" + sanitizedQuery + "\"\n\n" +
+                        "Here are the search results from the knowledge base:\n\n" + rawResults + "\n\n" +
+                        "Please provide a helpful, natural language response that summarizes these results and answers the user's query. " +
+                        "Include relevant details and format the response in a clear, readable way.";
+                    
+                    String aiProcessedResponse = ollamaService.generateSimple(aiPrompt);
+                    
+                    // Fallback to formatted results if AI fails
+                    if (aiProcessedResponse == null || aiProcessedResponse.trim().isEmpty()) {
+                        logger.warn("AI processing returned empty response, falling back to formatted results");
+                        String formattedResults = formatSearchResults(searchQuery, results);
+                        Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                    } else {
+                        Message aiMessage = chatService.sendAIMessage(channelId, aiProcessedResponse);
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                        logger.info("Search results processed by AI and sent for query: {} - {} results", searchQuery, results.size());
+                    }
+                } catch (Exception aiException) {
+                    // If AI processing fails, fall back to formatted results
+                    logger.error("AI processing failed, falling back to formatted results", aiException);
+                    String formattedResults = formatSearchResults(searchQuery, results);
+                    Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                    if (aiMessage != null) {
+                        broadcastMessage(aiMessage);
+                    }
                 }
-                logger.info("Search results sent for query: {} - {} results", searchQuery, results.size());
             }
         } catch (Exception e) {
             logger.error("Error handling search request", e);
@@ -493,26 +522,80 @@ public class ChatController {
         
         int count = 1;
         for (SummaryDocument doc : results) {
-            sb.append("### ").append(count).append(". ").append(doc.getTitle()).append("\n\n");
+            // Add title with null check
+            String title = doc.getTitle();
+            sb.append("### ").append(count).append(". ").append(title != null ? title : "Untitled").append("\n\n");
             
-            // Add a snippet of the content (first 300 characters)
+            // Add a snippet of the content (first 300 characters) with null check
             String content = doc.getContent();
-            if (content.length() > 300) {
-                content = content.substring(0, 300) + "...";
+            if (content != null) {
+                if (content.length() > 300) {
+                    content = content.substring(0, 300) + "...";
+                }
+                sb.append(content).append("\n\n");
+            } else {
+                sb.append("[No content]\n\n");
             }
-            sb.append(content).append("\n\n");
             
             // Add keywords if available
             if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
                 sb.append("**Keywords:** ").append(String.join(", ", doc.getKeywords())).append("\n\n");
             }
             
-            // Add metadata
-            sb.append("*Created: ").append(doc.getTimestamp()).append("*\n\n");
+            // Add metadata with null check
+            if (doc.getTimestamp() != null) {
+                sb.append("*Created: ").append(doc.getTimestamp()).append("*\n\n");
+            }
             
             if (count < results.size()) {
                 sb.append("---\n\n");
             }
+            count++;
+        }
+        
+        return sb.toString();
+    }
+    
+    /**
+     * Format search results for AI processing (more structured format)
+     */
+    private String formatSearchResultsForAI(String query, List<SummaryDocument> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Found ").append(results.size()).append(" matching ");
+        sb.append(results.size() == 1 ? "document" : "documents").append(":\n\n");
+        
+        // Limit content length to prevent exceeding AI model limits (max 5000 chars per document)
+        final int MAX_CONTENT_LENGTH = 5000;
+        
+        int count = 1;
+        for (SummaryDocument doc : results) {
+            sb.append("Document ").append(count).append(":\n");
+            
+            // Add title with null check
+            String title = doc.getTitle();
+            sb.append("Title: ").append(title != null ? title : "Untitled").append("\n");
+            
+            // Truncate content if too long, with null check
+            String content = doc.getContent();
+            if (content != null) {
+                if (content.length() > MAX_CONTENT_LENGTH) {
+                    content = content.substring(0, MAX_CONTENT_LENGTH) + "... [content truncated]";
+                }
+                sb.append("Content: ").append(content).append("\n");
+            } else {
+                sb.append("Content: [No content]\n");
+            }
+            
+            // Add keywords if available
+            if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
+                sb.append("Keywords: ").append(String.join(", ", doc.getKeywords())).append("\n");
+            }
+            
+            // Add timestamp with null check
+            if (doc.getTimestamp() != null) {
+                sb.append("Created: ").append(doc.getTimestamp()).append("\n");
+            }
+            sb.append("\n");
             count++;
         }
         
