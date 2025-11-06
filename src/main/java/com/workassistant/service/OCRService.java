@@ -1,5 +1,6 @@
 package com.workassistant.service;
 
+import com.workassistant.util.TextUtils;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
 import org.slf4j.Logger;
@@ -239,12 +240,7 @@ public class OCRService {
                 .filter(word -> {
                     // For Chinese/CJK characters: keep words with at least 2 characters
                     // For English/Latin: keep words longer than 3 chars
-                    boolean hasCJK = word.chars().anyMatch(c -> 
-                        Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
-                        Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
-                        Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
-                        Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                    );
+                    boolean hasCJK = TextUtils.containsCJKCharacters(word);
                     if (hasCJK) {
                         return word.length() >= 2;  // Chinese words can be meaningful with 2 chars
                     } else {

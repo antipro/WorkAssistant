@@ -16,6 +16,7 @@ import com.workassistant.service.ZentaoFunctionProvider;
 import com.workassistant.service.KBFunctionProvider;
 import com.workassistant.service.ZentaoService;
 import com.workassistant.service.OCRService;
+import com.workassistant.util.TextUtils;
 import io.javalin.http.Context;
 import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
@@ -1374,12 +1375,7 @@ public class ChatController {
                         
                         // For Chinese/CJK characters: keep words with at least 2 characters
                         // For English/Latin: keep words longer than MIN_KEYWORD_LENGTH
-                        boolean hasCJK = word.chars().anyMatch(c -> 
-                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
-                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
-                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
-                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                        );
+                        boolean hasCJK = TextUtils.containsCJKCharacters(word);
                         
                         if (hasCJK && word.length() >= 2) {
                             allKeywords.add(word);
