@@ -32,16 +32,24 @@ Now, the SEARCH action processes results through the AI model:
 
 **Key Changes:**
 - When search results are found (non-empty), instead of calling `formatSearchResults()` directly, the code now:
-  1. Calls `formatSearchResultsForAI()` to format results in a structured way
-  2. Creates a prompt for the AI model that includes the search query and formatted results
-  3. Calls `ollamaService.generateSimple()` to process the results through the AI
-  4. Sends the AI-generated response to the user
+  1. Calls `formatSearchResultsForAI()` to format results in a structured way with content length limiting
+  2. Sanitizes the search query to prevent prompt injection attacks
+  3. Creates a prompt for the AI model that includes the sanitized search query and formatted results
+  4. Calls `ollamaService.generateSimple()` to process the results through the AI
+  5. Implements fallback logic: if AI processing fails or returns empty, falls back to formatted markdown results
+  6. Sends the AI-generated response to the user
+
+**Security Enhancements:**
+- Search queries are sanitized by removing newlines to prevent prompt injection
+- Content length is limited to 5000 characters per document to prevent exceeding AI model limits
+- Comprehensive error handling with fallback to direct formatted results if AI processing fails
+- Null/empty response checking before sending to user
 
 ### New Method: `formatSearchResultsForAI`
 
-**Location:** `src/main/java/com/workassistant/controller/ChatController.java` (lines 528-556)
+**Location:** `src/main/java/com/workassistant/controller/ChatController.java` (lines 528-564)
 
-**Purpose:** Format search results in a structured format optimized for AI processing
+**Purpose:** Format search results in a structured format optimized for AI processing with security safeguards
 
 **Format:**
 ```
@@ -49,7 +57,7 @@ Found N matching document(s):
 
 Document 1:
 Title: [document title]
-Content: [full document content]
+Content: [content up to 5000 chars, truncated if longer]
 Keywords: [comma-separated keywords]
 Created: [timestamp]
 
@@ -58,6 +66,11 @@ Document 2:
 ```
 
 This format is more concise and structured than the markdown format, making it easier for the AI to parse and process.
+
+**Security Features:**
+- Content is truncated to a maximum of 5000 characters per document to prevent exceeding AI model token limits
+- Truncated content is clearly marked with "... [content truncated]" indicator
+- Null checking on content to prevent null pointer exceptions
 
 ## Benefits
 
@@ -128,7 +141,11 @@ No additional configuration is required. The feature uses the existing:
 
 ## Error Handling
 
-The implementation maintains existing error handling:
+The implementation maintains existing error handling and adds new safeguards:
 - If Elasticsearch is not available, a warning message is sent
 - If search returns no results, the AI provides a helpful response
-- If AI processing fails, the error is caught and logged, and an error message is sent to the user
+- If AI processing fails (exception thrown), the system falls back to formatted markdown results
+- If AI processing returns null or empty response, the system falls back to formatted markdown results
+- All fallback scenarios are properly logged for debugging
+- Search queries are sanitized to prevent prompt injection attacks
+- Content is length-limited to prevent exceeding AI model token limits

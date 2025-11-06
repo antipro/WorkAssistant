@@ -452,18 +452,41 @@ public class ChatController {
                 }
             } else {
                 // Process search results through AI model before sending to user
-                String rawResults = formatSearchResultsForAI(searchQuery, results);
-                String aiPrompt = "Based on the user's search query: \"" + searchQuery + "\"\n\n" +
-                    "Here are the search results from the knowledge base:\n\n" + rawResults + "\n\n" +
-                    "Please provide a helpful, natural language response that summarizes these results and answers the user's query. " +
-                    "Include relevant details and format the response in a clear, readable way.";
-                
-                String aiProcessedResponse = ollamaService.generateSimple(aiPrompt);
-                Message aiMessage = chatService.sendAIMessage(channelId, aiProcessedResponse);
-                if (aiMessage != null) {
-                    broadcastMessage(aiMessage);
+                try {
+                    String rawResults = formatSearchResultsForAI(searchQuery, results);
+                    // Sanitize search query to prevent prompt injection
+                    String sanitizedQuery = searchQuery.replaceAll("[\\r\\n]", " ").trim();
+                    String aiPrompt = "Based on the user's search query: \"" + sanitizedQuery + "\"\n\n" +
+                        "Here are the search results from the knowledge base:\n\n" + rawResults + "\n\n" +
+                        "Please provide a helpful, natural language response that summarizes these results and answers the user's query. " +
+                        "Include relevant details and format the response in a clear, readable way.";
+                    
+                    String aiProcessedResponse = ollamaService.generateSimple(aiPrompt);
+                    
+                    // Fallback to formatted results if AI fails
+                    if (aiProcessedResponse == null || aiProcessedResponse.trim().isEmpty()) {
+                        logger.warn("AI processing returned empty response, falling back to formatted results");
+                        String formattedResults = formatSearchResults(searchQuery, results);
+                        Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                    } else {
+                        Message aiMessage = chatService.sendAIMessage(channelId, aiProcessedResponse);
+                        if (aiMessage != null) {
+                            broadcastMessage(aiMessage);
+                        }
+                        logger.info("Search results processed by AI and sent for query: {} - {} results", searchQuery, results.size());
+                    }
+                } catch (Exception aiException) {
+                    // If AI processing fails, fall back to formatted results
+                    logger.error("AI processing failed, falling back to formatted results", aiException);
+                    String formattedResults = formatSearchResults(searchQuery, results);
+                    Message aiMessage = chatService.sendAIMessage(channelId, formattedResults);
+                    if (aiMessage != null) {
+                        broadcastMessage(aiMessage);
+                    }
                 }
-                logger.info("Search results processed by AI and sent for query: {} - {} results", searchQuery, results.size());
             }
         } catch (Exception e) {
             logger.error("Error handling search request", e);
@@ -533,11 +556,20 @@ public class ChatController {
         sb.append("Found ").append(results.size()).append(" matching ");
         sb.append(results.size() == 1 ? "document" : "documents").append(":\n\n");
         
+        // Limit content length to prevent exceeding AI model limits (max 5000 chars per document)
+        final int MAX_CONTENT_LENGTH = 5000;
+        
         int count = 1;
         for (SummaryDocument doc : results) {
             sb.append("Document ").append(count).append(":\n");
             sb.append("Title: ").append(doc.getTitle()).append("\n");
-            sb.append("Content: ").append(doc.getContent()).append("\n");
+            
+            // Truncate content if too long
+            String content = doc.getContent();
+            if (content != null && content.length() > MAX_CONTENT_LENGTH) {
+                content = content.substring(0, MAX_CONTENT_LENGTH) + "... [content truncated]";
+            }
+            sb.append("Content: ").append(content).append("\n");
             
             // Add keywords if available
             if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
