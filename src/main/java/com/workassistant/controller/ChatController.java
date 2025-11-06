@@ -269,6 +269,9 @@ public class ChatController {
                 
                 // Prepend username to the prompt for AI context
                 String username = userMessage.getUsername();
+                if (username == null || username.trim().isEmpty()) {
+                    username = "Unknown";
+                }
                 String promptWithUsername = "[User: " + username + "] " + prompt;
                 
                 // Use AI to determine user intent (SUMMARY, SEARCH, or CHAT)

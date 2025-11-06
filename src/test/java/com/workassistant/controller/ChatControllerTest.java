@@ -3,7 +3,6 @@ package com.workassistant.controller;
 import com.workassistant.model.Message;
 import com.workassistant.model.User;
 import com.workassistant.service.ChatService;
-import com.workassistant.service.OllamaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +13,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ChatControllerTest {
     private ChatService chatService;
-    private OllamaService ollamaService;
 
     @BeforeEach
     void setUp() {
