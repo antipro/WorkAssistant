@@ -39,8 +39,6 @@ public class OCRServiceTest {
                     Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS));
             
             assertTrue(hasChineseKeyword, "Should preserve Chinese characters in keywords");
-            
-            System.out.println("Extracted Chinese keywords: " + keywords);
         } catch (Exception e) {
             fail("Failed to test Chinese keyword extraction: " + e.getMessage());
         }
@@ -66,8 +64,6 @@ public class OCRServiceTest {
             // Should filter out stop words
             assertFalse(keywords.contains("this"), "Should filter out stop words");
             assertFalse(keywords.contains("with"), "Should filter out stop words");
-            
-            System.out.println("Extracted English keywords: " + keywords);
         } catch (Exception e) {
             fail("Failed to test English keyword extraction: " + e.getMessage());
         }
@@ -94,8 +90,6 @@ public class OCRServiceTest {
                 .anyMatch(k -> k.chars().allMatch(c -> c >= 'a' && c <= 'z'));
             
             assertTrue(hasChinese || hasEnglish, "Should extract keywords from mixed text");
-            
-            System.out.println("Extracted mixed keywords: " + keywords);
         } catch (Exception e) {
             fail("Failed to test mixed keyword extraction: " + e.getMessage());
         }
@@ -136,8 +130,6 @@ public class OCRServiceTest {
                 assertFalse(k.contains("，"), "Keywords should not contain punctuation");
                 assertFalse(k.contains("。"), "Keywords should not contain punctuation");
             });
-            
-            System.out.println("Extracted keywords from punctuated text: " + keywords);
         } catch (Exception e) {
             fail("Failed to test punctuation handling: " + e.getMessage());
         }

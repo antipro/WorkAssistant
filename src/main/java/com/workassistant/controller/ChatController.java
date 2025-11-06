@@ -1364,9 +1364,8 @@ public class ChatController {
                 // Extract keywords from text if available
                 if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
                     // Split by punctuation and whitespace while preserving Unicode characters (including Chinese)
-                    // This regex handles both ASCII and Unicode punctuation marks including CJK punctuation
                     String[] words = clipboardData.getText()
-                        .replaceAll("[\\p{Punct}\\p{Space}\\u3000-\\u303F\\uFF00-\\uFFEF]+", " ")
+                        .replaceAll(TextUtils.PUNCTUATION_PATTERN, " ")
                         .trim()
                         .split("\\s+");
                     
