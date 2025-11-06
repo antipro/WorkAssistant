@@ -83,6 +83,11 @@ public class WorkAssistantApplication {
         // AI function-call endpoint for models/tooling
     app.post("/api/ai/function-call", aiController::functionCall);
         
+        // Elasticsearch API routes
+        com.workassistant.service.ElasticsearchService esService = com.workassistant.service.ElasticsearchService.getInstance();
+        com.workassistant.controller.ElasticsearchController esController = new com.workassistant.controller.ElasticsearchController(esService);
+        app.get("/api/elasticsearch/status", esController::getStatus);
+        
         // Chat API routes
         app.post("/api/chat/login", chatController::login);
         app.get("/api/chat/users", chatController::getUsers);

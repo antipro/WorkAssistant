@@ -20,4 +20,4 @@ cors.origins=*
 # Elasticsearch Configuration
 elasticsearch.host=localhost
 elasticsearch.port=9200
-elasticsearch.index=work_assistant_summaries
+elasticsearch.index=kb

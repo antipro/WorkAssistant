@@ -131,6 +131,12 @@ public class ElasticsearchService {
 
     /**
      * Create index with IK analyzer template if it doesn't exist
+     * Unified schema for both summary and clipboard content documents
+     * 
+     * Schema field usage by document type:
+     * - Both types: title, keywords, timestamp, channelId, userId
+     * - Summary documents: content (markdown format)
+     * - Clipboard documents: text (plain text), images (nested array with paths and OCR keywords)
      */
     private void createIndexWithTemplate() throws IOException {
         AppConfig config = AppConfig.getInstance();
@@ -143,9 +149,10 @@ public class ElasticsearchService {
             try {
                 boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(indexName))).value();
                 if (!exists) {
-                    // Create index with IK analyzer mappings (best-effort)
+                    // Create unified index with IK analyzer mappings for both summary and clipboard documents
                     Map<String, Property> properties = new HashMap<>();
 
+                    // Common fields for both document types
                     properties.put("title", Property.of(p -> p
                         .text(TextProperty.of(t -> t
                             .analyzer("ik_max_word")
@@ -174,12 +181,32 @@ public class ElasticsearchService {
                     properties.put("channelId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
                     properties.put("userId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
 
+                    // Additional fields for clipboard content documents
+                    properties.put("text", Property.of(p -> p
+                        .text(TextProperty.of(t -> t
+                            .analyzer("ik_max_word")
+                            .searchAnalyzer("ik_smart")
+                        ))
+                    ));
+
+                    properties.put("images", Property.of(p -> p
+                        .nested(n -> n
+                            .properties("path", Property.of(pp -> pp.keyword(k -> k)))
+                            .properties("keywords", Property.of(pp -> pp
+                                .text(t -> t
+                                    .analyzer("ik_max_word")
+                                    .searchAnalyzer("ik_smart")
+                                )
+                            ))
+                        )
+                    ));
+
                     client.indices().create(CreateIndexRequest.of(c -> c
                         .index(indexName)
                         .mappings(TypeMapping.of(m -> m.properties(properties)))
                     ));
 
-                    logger.info("Created Elasticsearch index: {} with IK analyzer mappings", indexName);
+                    logger.info("Created unified Elasticsearch index: {} with IK analyzer mappings", indexName);
                 } else {
                     logger.info("Elasticsearch index already exists: {}", indexName);
                 }
@@ -206,6 +233,7 @@ public class ElasticsearchService {
 
     /**
      * Fallback: Create index with standard analyzer if IK is not available
+     * Unified schema for both summary and clipboard content documents
      */
     private void createIndexWithStandardAnalyzer() throws IOException {
         try {
@@ -216,6 +244,7 @@ public class ElasticsearchService {
             if (!exists) {
                 Map<String, Property> properties = new HashMap<>();
                 
+                // Common fields for both document types
                 properties.put("title", Property.of(p -> p.text(TextProperty.of(t -> t))));
                 properties.put("content", Property.of(p -> p.text(TextProperty.of(t -> t))));
                 properties.put("keywords", Property.of(p -> p.text(TextProperty.of(t -> t))));
@@ -225,12 +254,21 @@ public class ElasticsearchService {
                 properties.put("channelId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
                 properties.put("userId", Property.of(p -> p.keyword(KeywordProperty.of(k -> k))));
                 
+                // Additional fields for clipboard content documents
+                properties.put("text", Property.of(p -> p.text(TextProperty.of(t -> t))));
+                properties.put("images", Property.of(p -> p
+                    .nested(n -> n
+                        .properties("path", Property.of(pp -> pp.keyword(k -> k)))
+                        .properties("keywords", Property.of(pp -> pp.text(t -> t)))
+                    )
+                ));
+                
                 client.indices().create(CreateIndexRequest.of(c -> c
                     .index(indexName)
                     .mappings(TypeMapping.of(m -> m.properties(properties)))
                 ));
                 
-                logger.info("Created Elasticsearch index: {} with standard analyzer", indexName);
+                logger.info("Created unified Elasticsearch index: {} with standard analyzer", indexName);
             }
         } catch (Exception e) {
             logger.error("Failed to create Elasticsearch index with standard analyzer", e);
@@ -255,81 +293,15 @@ public class ElasticsearchService {
      * Index clipboard content document in Elasticsearch
      */
     public String indexClipboardContent(ClipboardContentDocument document) throws IOException {
-        // Use a separate index for clipboard content
-        String clipboardIndex = indexName + "_clipboard";
-        
-        // Create index if it doesn't exist
-        try {
-            boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(clipboardIndex))).value();
-            if (!exists) {
-                createClipboardContentIndex(clipboardIndex);
-            }
-        } catch (Exception e) {
-            logger.warn("Could not check/create clipboard index: {}", e.getMessage());
-        }
-        
+        // Use the same kb index for clipboard content
         IndexResponse response = client.index(IndexRequest.of(i -> i
-            .index(clipboardIndex)
+            .index(indexName)
             .id(document.getId())
             .document(document)
         ));
         
         logger.info("Indexed clipboard content: {} with result: {}", document.getId(), response.result());
         return response.id();
-    }
-
-    /**
-     * Create index for clipboard content with proper mappings
-     */
-    private void createClipboardContentIndex(String indexName) throws IOException {
-        TypeMapping mapping = TypeMapping.of(tm -> tm
-            .properties("title", Property.of(p -> p
-                .text(t -> t
-                    .analyzer("ik_max_word")
-                    .searchAnalyzer("ik_smart")
-                )
-            ))
-            .properties("text", Property.of(p -> p
-                .text(t -> t
-                    .analyzer("ik_max_word")
-                    .searchAnalyzer("ik_smart")
-                )
-            ))
-            .properties("keywords", Property.of(p -> p
-                .text(t -> t
-                    .analyzer("ik_max_word")
-                    .searchAnalyzer("ik_smart")
-                )
-            ))
-            .properties("timestamp", Property.of(p -> p
-                .date(d -> d)
-            ))
-            .properties("channelId", Property.of(p -> p
-                .keyword(k -> k)
-            ))
-            .properties("userId", Property.of(p -> p
-                .keyword(k -> k)
-            ))
-            .properties("images", Property.of(p -> p
-                .nested(n -> n
-                    .properties("path", Property.of(pp -> pp.keyword(k -> k)))
-                    .properties("keywords", Property.of(pp -> pp
-                        .text(t -> t
-                            .analyzer("ik_max_word")
-                            .searchAnalyzer("ik_smart")
-                        )
-                    ))
-                )
-            ))
-        );
-
-        CreateIndexRequest request = CreateIndexRequest.of(c -> c
-            .index(indexName)
-            .mappings(mapping)
-        );
-
-        client.indices().create(request);
-        logger.info("Created clipboard content index: {}", indexName);
     }
 
     /**
@@ -444,5 +416,56 @@ public class ElasticsearchService {
         
         logger.info("Found {} summaries for channel: {}", results.size(), channelId);
         return results;
+    }
+    
+    /**
+     * Get Elasticsearch index status information
+     * @return Map containing index statistics and health information
+     */
+    public Map<String, Object> getIndexStatus() {
+        Map<String, Object> status = new HashMap<>();
+        
+        try {
+            // Check if index exists
+            boolean exists = client.indices().exists(ExistsRequest.of(e -> e.index(indexName))).value();
+            status.put("exists", exists);
+            status.put("indexName", indexName);
+            
+            if (exists) {
+                // Get count of documents
+                co.elastic.clients.elasticsearch.core.CountResponse countResponse = 
+                    client.count(c -> c.index(indexName));
+                status.put("documentCount", countResponse.count());
+                
+                // Get cluster health for this index
+                co.elastic.clients.elasticsearch.cluster.HealthResponse healthResponse = 
+                    client.cluster().health(h -> h.index(indexName));
+                
+                status.put("status", healthResponse.status().toString());
+                status.put("activeShards", healthResponse.activeShards());
+                status.put("activePrimaryShards", healthResponse.activePrimaryShards());
+                
+            } else {
+                status.put("documentCount", 0);
+                status.put("status", "NOT_EXISTS");
+            }
+            
+            status.put("available", true);
+            
+        } catch (Exception e) {
+            logger.error("Failed to get index status", e);
+            status.put("available", false);
+            status.put("error", e.getMessage());
+        }
+        
+        return status;
+    }
+    
+    /**
+     * Get Elasticsearch client for advanced operations
+     * @return ElasticsearchClient instance
+     */
+    public ElasticsearchClient getClient() {
+        return client;
     }
 }

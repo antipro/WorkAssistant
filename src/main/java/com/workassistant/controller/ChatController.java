@@ -13,6 +13,7 @@ import com.workassistant.service.ChatService;
 import com.workassistant.service.OllamaService;
 import com.workassistant.service.ElasticsearchService;
 import com.workassistant.service.ZentaoFunctionProvider;
+import com.workassistant.service.KBFunctionProvider;
 import com.workassistant.service.ZentaoService;
 import com.workassistant.service.OCRService;
 import io.javalin.http.Context;
@@ -43,6 +44,7 @@ import java.util.regex.Pattern;
 public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
     private static final int MIN_KEYWORD_LENGTH = 3;
+    private static final int MAX_KB_QUERY_RESULTS = 20;
     private static final String WORK_IMAGES_DIR = "work/images";
     
     private final ChatService chatService;
@@ -282,9 +284,9 @@ public class ChatController {
                 } else if (isSearchRequest) {
                     handleSearchRequest(channelId, prompt, userMessage);
                 } else {
-                    // Regular chat response with Zentao function calling support
-                    String zentaoTools = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
-                    OllamaResponse response = ollamaService.generateChatWithTools(prompt, zentaoTools);
+                    // Regular chat response with KB and Zentao function calling support
+                    String allTools = KBFunctionProvider.getAllFunctionToolsJson();
+                    OllamaResponse response = ollamaService.generateChatWithTools(prompt, allTools);
                     String aiResponse = response.getResponse();
                     
                     // Check if the response is a function call
@@ -563,9 +565,9 @@ public class ChatController {
             // Send the function result back to Ollama to get a regularized natural language response
             // Decode any unicode escape sequences (e.g., "\u6cb3\u5317") to original characters
             String decodedFunctionResult = decodeUnicodeEscapes(functionResult != null ? functionResult : "");
-            String zentaoTools = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
+            String allTools = KBFunctionProvider.getAllFunctionToolsJson();
             OllamaResponse finalResponse = ollamaService.continueConversationWithFunctionResult(
-                originalPrompt, toolCalls, decodedFunctionResult, zentaoTools);
+                originalPrompt, toolCalls, decodedFunctionResult, allTools);
             
             // Send the regularized AI response to the user
             String regularizedAnswer = finalResponse.getResponse();
@@ -586,7 +588,7 @@ public class ChatController {
     }
     
     /**
-     * Execute the Zentao function based on the function name
+     * Execute the function based on the function name (Zentao or KB)
      */
     private String executeFunctionCall(String functionName, JsonNode arguments) {
         try {
@@ -602,12 +604,65 @@ public class ChatController {
                     Map<String, String> bugParams = parseArgumentsToMap(arguments);
                     return zentaoService.getBugs(bugParams);
                     
+                case "query_kb":
+                    return executeKBQuery(arguments);
+                    
                 default:
                     return "⚠️ Unknown function: " + functionName;
             }
         } catch (Exception e) {
             logger.error("Error executing function: {}", functionName, e);
             return "⚠️ Error executing " + functionName + ": " + e.getMessage();
+        }
+    }
+    
+    /**
+     * Execute KB query function
+     * @param arguments Function arguments containing query and optional maxResults
+     * @return JSON string of search results
+     */
+    private String executeKBQuery(JsonNode arguments) {
+        try {
+            String query = arguments.has("query") ? arguments.get("query").asText() : "";
+            int maxResults = arguments.has("maxResults") ? arguments.get("maxResults").asInt(5) : 5;
+            
+            // Limit maxResults to MAX_KB_QUERY_RESULTS
+            if (maxResults > MAX_KB_QUERY_RESULTS) {
+                maxResults = MAX_KB_QUERY_RESULTS;
+            }
+            
+            if (query == null || query.trim().isEmpty()) {
+                return "{\"error\": \"Query parameter is required\"}";
+            }
+            
+            logger.info("Executing KB query: {} (maxResults: {})", query, maxResults);
+            
+            // Search the KB index
+            List<SummaryDocument> results = elasticsearchService.searchSummaries(query, maxResults);
+            
+            // Format results as JSON
+            Map<String, Object> response = new HashMap<>();
+            response.put("query", query);
+            response.put("resultCount", results.size());
+            response.put("maxResults", maxResults);
+            
+            List<Map<String, Object>> formattedResults = new ArrayList<>();
+            for (SummaryDocument doc : results) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", doc.getId());
+                item.put("title", doc.getTitle());
+                item.put("content", doc.getContent());
+                item.put("keywords", doc.getKeywords());
+                item.put("timestamp", doc.getTimestamp().toString());
+                formattedResults.add(item);
+            }
+            response.put("results", formattedResults);
+            
+            return objectMapper.writeValueAsString(response);
+            
+        } catch (Exception e) {
+            logger.error("Error executing KB query", e);
+            return "{\"error\": \"" + e.getMessage() + "\"}";
         }
     }
     

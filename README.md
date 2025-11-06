@@ -85,7 +85,7 @@ WorkAssistant
    # Elasticsearch Configuration
    elasticsearch.host=localhost
    elasticsearch.port=9200
-   elasticsearch.index=work_assistant_summaries
+   elasticsearch.index=kb
    ```
 
 4. **Build the project**
@@ -164,19 +164,25 @@ The search feature supports:
 
 #### AI Function Calling Feature
 
-When you mention `@eking`, the AI assistant has access to Zentao functions and can automatically call them when needed:
+When you mention `@eking`, the AI assistant has access to both KB (Knowledge Base) and Zentao functions:
+
+**KB Functions:**
+- **query_kb**: Search the knowledge base for summaries, notes, clipboard content, and other stored knowledge
+
+**Zentao Functions:**
 - **get_projects**: Retrieve all projects from Zentao
 - **get_tasks**: Get tasks with optional filters (assignedTo, project, status)
 - **get_bugs**: Get bugs with optional filters (assignedTo, project, status)
 
 Example queries:
 ```
+@eking What did we discuss about the architecture last week?
 @eking What projects do we have?
 @eking Show me tasks assigned to John with status doing
-@eking List all active bugs in project Alpha
+@eking Find my notes about testing and show me related bugs
 ```
 
-The AI automatically decides when to call these functions based on your question and extracts relevant parameters. For detailed documentation, see [FUNCTION_CALLING.md](FUNCTION_CALLING.md).
+The AI automatically decides which functions to call based on your question and extracts relevant parameters. It can combine multiple function calls to provide comprehensive answers. For detailed documentation, see [FUNCTION_CALLING.md](FUNCTION_CALLING.md) and [KB_IMPLEMENTATION.md](KB_IMPLEMENTATION.md).
 
 For detailed chat documentation, see [CHAT.md](CHAT.md).
 
@@ -214,18 +220,26 @@ For detailed chat documentation, see [CHAT.md](CHAT.md).
 - `GET /api/zentao/bugs` - Get all bugs
 - `GET /api/zentao/status` - Check Zentao service status
 
+### Elasticsearch Endpoints
+- `GET /api/elasticsearch/status` - Get KB index status (document count, health, shards)
+- Status Page: `/status.html` - Web-based index monitoring dashboard
+
 ### Elasticsearch Features
+- **Unified KB Index**: Single "kb" index stores both AI summaries and clipboard content
 - **Automatic Index Creation**: Creates index template with IK analyzer on startup
-- **Summary Storage**: Stores AI-generated summaries with title, content (markdown), and keywords
+- **Knowledge Storage**: Stores AI-generated summaries, clipboard content, and images with OCR keywords
 - **IK Analyzer Support**: Uses `ik_max_word` for indexing and `ik_smart` for searching (Chinese text support)
 - **Fallback**: If IK analyzer is not available, falls back to standard analyzer
-- **Index Structure**:
+- **KB Query Function**: AI can automatically search the knowledge base when users ask questions
+- **Unified Index Structure**:
   - `title` (text with IK analyzer)
   - `content` (text with IK analyzer, markdown format)
+  - `text` (text with IK analyzer, plain text for clipboard)
   - `keywords` (text with IK analyzer)
   - `timestamp` (date)
   - `channelId` (keyword)
   - `userId` (keyword)
+  - `images` (nested: path, keywords for clipboard content)
 
 ## Development
 
@@ -276,9 +290,13 @@ mvn clean package    # Build JAR
 ### Elasticsearch Configuration
 - `elasticsearch.host` - Elasticsearch host (default: localhost)
 - `elasticsearch.port` - Elasticsearch port (default: 9200)
-- `elasticsearch.index` - Index name for summaries (default: work_assistant_summaries)
+- `elasticsearch.index` - Index name for knowledge base (default: kb)
 
-**Note**: Elasticsearch is optional. If not available, the application will continue to function but summary storage will be disabled.
+**Note**: Elasticsearch is optional. If not available, the application will continue to function but knowledge storage and search will be disabled.
+
+**KB Index**: The application now uses a unified "kb" (Knowledge Base) index that stores both AI-generated summaries and clipboard content. This enables powerful search across all stored knowledge.
+
+**Status Page**: Access the Elasticsearch index status page at `http://localhost:8080/status.html` to monitor document count, health, and other statistics.
 
 **IK Analyzer Plugin**: For Chinese text analysis, install the IK analyzer plugin:
 ```bash

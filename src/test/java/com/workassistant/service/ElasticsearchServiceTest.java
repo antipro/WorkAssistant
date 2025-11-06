@@ -33,8 +33,8 @@ class ElasticsearchServiceTest {
         String indexName = service.getIndexName();
         assertNotNull(indexName);
         assertFalse(indexName.isEmpty());
-        // Should be the configured index name
-        assertTrue(indexName.equals("work_assistant_summaries") || indexName.contains("summaries"));
+        // Should be the configured index name (kb)
+        assertEquals("kb", indexName);
     }
 
     @Test
