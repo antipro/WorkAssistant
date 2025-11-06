@@ -7,7 +7,6 @@ import org.apache.batik.transcoder.image.PNGTranscoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,9 +23,7 @@ public class SVGConverter {
     private static final Logger logger = LoggerFactory.getLogger(SVGConverter.class);
     
     private static final String SVG_MIME_TYPE = "image/svg+xml";
-    private static final String TEXT_XML_MIME_TYPE = "text/xml";
     private static final String TEXT_SVG_MIME_TYPE = "text/svg";
-    private static final String APPLICATION_XML_MIME_TYPE = "application/xml";
     
     private static final int DEFAULT_WIDTH = 800;
     private static final int DEFAULT_HEIGHT = 600;
@@ -83,7 +80,7 @@ public class SVGConverter {
     }
     
     /**
-     * Converts SVG content to PNG format
+     * Converts SVG content to PNG format with automatic dimension detection
      * 
      * @param svgContent The SVG content as a string
      * @return Base64-encoded PNG image data with data URI prefix (data:image/png;base64,...)
@@ -91,7 +88,9 @@ public class SVGConverter {
      * @throws TranscoderException if SVG transcoding fails
      */
     public static String convertSVGToPNG(String svgContent) throws IOException, TranscoderException {
-        return convertSVGToPNG(svgContent, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        // Try to extract dimensions from SVG, use defaults if not found
+        int[] dimensions = extractSVGDimensions(svgContent);
+        return convertSVGToPNG(svgContent, dimensions[0], dimensions[1]);
     }
     
     /**
@@ -247,14 +246,16 @@ public class SVGConverter {
             }
             
             String value = svgTag.substring(start, end);
-            // Remove units like px, pt, etc.
-            value = value.replaceAll("[^0-9.]", "");
+            // Remove units like px, pt, etc. Keep only digits, dots, and minus signs
+            value = value.replaceAll("[^0-9.-]", "");
             
             if (value.isEmpty()) {
                 return -1;
             }
             
-            return (int) Double.parseDouble(value);
+            // Parse and return absolute value (dimensions should always be positive)
+            double parsed = Double.parseDouble(value);
+            return (int) Math.abs(parsed);
             
         } catch (Exception e) {
             return -1;
