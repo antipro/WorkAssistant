@@ -1148,10 +1148,13 @@ public class ChatController {
             java.io.InputStream in = new java.io.ByteArrayInputStream(imageBytes);
             java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
             if (img != null) {
+                String folder = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHH").format(java.time.ZonedDateTime.now());
                 String filename = UUID.randomUUID().toString() + ".png";
-                String relativePath = filename;
-                String fullPath = WORK_IMAGES_DIR + "/" + filename;
+                String relativePath = folder + "/" + filename;
+                String fullPath = WORK_IMAGES_DIR + "/" + relativePath;
                 java.io.File outputFile = new java.io.File(fullPath);
+                // ensure folder exists
+                outputFile.getParentFile().mkdirs();
                 javax.imageio.ImageIO.write(img, "png", outputFile);
                 logger.info("Saved image as PNG: {}", fullPath);
                 return relativePath;
@@ -1162,14 +1165,25 @@ public class ChatController {
 
         // Fallback: save raw bytes with extension inferred from mime type
         String extension = "bin";
-        try { extension = type.split("/")[1]; } catch (Exception ignore) {}
-        String filename = UUID.randomUUID().toString() + "." + extension;
-        String relativePath = filename;
-        String fullPath = WORK_IMAGES_DIR + "/" + filename;
-        java.io.File outputFile = new java.io.File(fullPath);
-        java.nio.file.Files.write(outputFile.toPath(), imageBytes);
-        logger.info("Saved raw image bytes: {}", fullPath);
-        return relativePath;
+        try {
+            extension = type.split("/")[1];
+            // sanitize extension (remove +xml or parameters)
+            if (extension.contains("+")) extension = extension.substring(0, extension.indexOf('+'));
+            if (extension.contains(";")) extension = extension.substring(0, extension.indexOf(';'));
+        } catch (Exception ignore) {}
+        // If this is an SVG (e.g., image/svg+xml), use .svg and do not attempt to OCR
+        if (type != null && type.toLowerCase().contains("svg")) {
+            extension = "svg";
+        }
+    String folder = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHH").format(java.time.ZonedDateTime.now());
+    String filename = UUID.randomUUID().toString() + "." + extension;
+    String relativePath = folder + "/" + filename;
+    String fullPath = WORK_IMAGES_DIR + "/" + relativePath;
+    java.io.File outputFile = new java.io.File(fullPath);
+    outputFile.getParentFile().mkdirs();
+    java.nio.file.Files.write(outputFile.toPath(), imageBytes);
+    logger.info("Saved raw image bytes: {}", fullPath);
+    return relativePath;
     }
 
     /**
@@ -1181,10 +1195,12 @@ public class ChatController {
             java.io.InputStream in = new java.io.ByteArrayInputStream(bytes);
             java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
             if (img != null) {
+                String folder = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHH").format(java.time.ZonedDateTime.now());
                 String filename = UUID.randomUUID().toString() + ".png";
-                String relativePath = filename;
-                String fullPath = WORK_IMAGES_DIR + "/" + filename;
+                String relativePath = folder + "/" + filename;
+                String fullPath = WORK_IMAGES_DIR + "/" + relativePath;
                 java.io.File outputFile = new java.io.File(fullPath);
+                outputFile.getParentFile().mkdirs();
                 javax.imageio.ImageIO.write(img, "png", outputFile);
                 logger.info("Saved image bytes as PNG: {} (mime={})", fullPath, mime);
                 return relativePath;
@@ -1194,14 +1210,15 @@ public class ChatController {
         }
 
         if (extension == null || extension.isEmpty()) extension = "bin";
-        String filename = UUID.randomUUID().toString() + "." + extension;
-        String relativePath = filename;
-        String fullPath = WORK_IMAGES_DIR + "/" + filename;
-
-        java.io.File outputFile = new java.io.File(fullPath);
-        java.nio.file.Files.write(outputFile.toPath(), bytes);
-        logger.info("Saved raw image bytes: {} (mime={})", fullPath, mime);
-        return relativePath;
+    String folder = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHH").format(java.time.ZonedDateTime.now());
+    String filename = UUID.randomUUID().toString() + "." + extension;
+    String relativePath = folder + "/" + filename;
+    String fullPath = WORK_IMAGES_DIR + "/" + relativePath;
+    java.io.File outputFile = new java.io.File(fullPath);
+    outputFile.getParentFile().mkdirs();
+    java.nio.file.Files.write(outputFile.toPath(), bytes);
+    logger.info("Saved raw image bytes: {} (mime={})", fullPath, mime);
+    return relativePath;
     }
 
     /**

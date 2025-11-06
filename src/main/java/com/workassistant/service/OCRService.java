@@ -81,6 +81,13 @@ public class OCRService {
             return "";
         }
 
+        // Skip OCR for vector formats like SVG
+        String name = imageFile.getName().toLowerCase();
+        if (name.endsWith(".svg") || name.endsWith(".svg+xml") || name.endsWith(".svgz")) {
+            logger.info("Skipping OCR for SVG/vector image: {}", imageFile.getName());
+            return "";
+        }
+
         try {
             String text = tesseract.doOCR(imageFile);
             return text != null ? text.trim() : "";
