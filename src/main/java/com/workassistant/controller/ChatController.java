@@ -760,12 +760,26 @@ public class ChatController {
                 String jsonMessage = objectMapper.writeValueAsString(message);
 
                 for (WsConnectContext session : sessions) {
-                    try {
-                        session.send(jsonMessage);
-                    } catch (Exception e) {
-                        logger.error("Error sending user list update to client, removing session", e);
-                        sessions.remove(session);
-                    }
+                    // send asynchronously to avoid blocking the request thread
+                    aiExecutor.submit(() -> {
+                        try {
+                            session.send(jsonMessage);
+                        } catch (Exception e) {
+                            // If channel already closed, log at INFO; otherwise log as error
+                            Throwable cause = e.getCause();
+                            boolean closed = false;
+                            while (cause != null) {
+                                if (cause instanceof java.nio.channels.ClosedChannelException) { closed = true; break; }
+                                cause = cause.getCause();
+                            }
+                            if (closed) {
+                                logger.info("Session closed while sending user list update, removing session: {}", session);
+                            } else {
+                                logger.error("Error sending user list update to client, removing session", e);
+                            }
+                            try { sessions.remove(session); } catch (Exception ignore) {}
+                        }
+                    });
                 }
             }
         } catch (Exception e) {
@@ -880,12 +894,24 @@ public class ChatController {
             // Send to all connected clients (all sessions for each user)
             for (java.util.Set<WsConnectContext> sessions : userSessions.values()) {
                 for (WsConnectContext session : sessions) {
-                    try {
-                        session.send(jsonMessage);
-                    } catch (Exception e) {
-                        logger.error("Error broadcasting message to client, removing session", e);
-                        sessions.remove(session);
-                    }
+                    aiExecutor.submit(() -> {
+                        try {
+                            session.send(jsonMessage);
+                        } catch (Exception e) {
+                            Throwable cause = e.getCause();
+                            boolean closed = false;
+                            while (cause != null) {
+                                if (cause instanceof java.nio.channels.ClosedChannelException) { closed = true; break; }
+                                cause = cause.getCause();
+                            }
+                            if (closed) {
+                                logger.info("Session closed while broadcasting message, removing session: {}", session);
+                            } else {
+                                logger.error("Error broadcasting message to client, removing session", e);
+                            }
+                            try { sessions.remove(session); } catch (Exception ignore) {}
+                        }
+                    });
                 }
             }
         } catch (Exception e) {
@@ -914,12 +940,24 @@ public class ChatController {
                 }
                 java.util.Set<WsConnectContext> sessions = entry.getValue();
                 for (WsConnectContext session : sessions) {
-                    try {
-                        session.send(jsonMessage);
-                    } catch (Exception e) {
-                        logger.error("Error broadcasting message to client, removing session", e);
-                        sessions.remove(session);
-                    }
+                    aiExecutor.submit(() -> {
+                        try {
+                            session.send(jsonMessage);
+                        } catch (Exception e) {
+                            Throwable cause = e.getCause();
+                            boolean closed = false;
+                            while (cause != null) {
+                                if (cause instanceof java.nio.channels.ClosedChannelException) { closed = true; break; }
+                                cause = cause.getCause();
+                            }
+                            if (closed) {
+                                logger.info("Session closed while broadcasting message (exclude), removing session: {}", session);
+                            } else {
+                                logger.error("Error broadcasting message to client, removing session", e);
+                            }
+                            try { sessions.remove(session); } catch (Exception ignore) {}
+                        }
+                    });
                 }
             }
         } catch (Exception e) {

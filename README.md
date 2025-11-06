@@ -296,7 +296,7 @@ WorkAssistant automatically prepends a configurable default system message to ev
 1. **Config File** (Recommended): Edit `config/default_system_message.json`
    ```json
    {
-     "message": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。"
+     "message": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。\n没有明确说明时，优先查询知识库。"
    }
    ```
 
@@ -343,7 +343,7 @@ The actual request sent to Ollama will include:
   "messages": [
     {
       "role": "system",
-      "content": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。"
+      "content": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。\n没有明确说明时，优先查询知识库。"
     },
     {
       "role": "user",
