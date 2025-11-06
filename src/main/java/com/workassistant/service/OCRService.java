@@ -219,10 +219,10 @@ public class OCRService {
             return new ArrayList<>();
         }
 
-        // Split by punctuation while preserving Unicode characters (including Chinese, Japanese, etc.)
-        // Keep alphanumeric characters and Unicode letters (including CJK characters)
+        // Split by punctuation and whitespace while preserving Unicode characters (including Chinese)
+        // This regex handles both ASCII and Unicode punctuation marks
         String[] words = text
-                .replaceAll("[\\p{Punct}\\s]+", " ")  // Replace punctuation and whitespace with space
+                .replaceAll("[\\p{Punct}\\p{Space}\\u3000-\\u303F\\uFF00-\\uFFEF]+", " ")  // ASCII/Unicode punct + CJK punct
                 .trim()
                 .split("\\s+");
 
