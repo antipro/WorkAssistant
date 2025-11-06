@@ -1,6 +1,7 @@
 package com.workassistant;
 
 import com.workassistant.config.AppConfig;
+import java.util.Map;
 import com.workassistant.controller.ChatController;
 import com.workassistant.controller.OllamaController;
 import com.workassistant.controller.ZentaoController;
@@ -91,6 +92,36 @@ public class WorkAssistantApplication {
         app.post("/api/chat/messages", chatController::sendMessage);
         app.post("/api/chat/clipboard", chatController::sendClipboardContent);
         app.get("/api/chat/images/{imagePath}", chatController::serveImage);
+        // Simple remote image proxy to avoid CORS when fetching remote images from the client
+        app.post("/api/remote-image-proxy", ctx -> {
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            String url = body.get("url");
+            if (url == null || url.isEmpty()) {
+                ctx.status(400).result("Missing url");
+                return;
+            }
+
+            try {
+                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                    .build();
+
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .GET()
+                    .build();
+
+                java.net.http.HttpResponse<byte[]> resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+                if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                    String contentType = resp.headers().firstValue("content-type").orElse("application/octet-stream");
+                    ctx.contentType(contentType).result(resp.body());
+                } else {
+                    ctx.status(502).result("Failed to fetch remote image: " + resp.statusCode());
+                }
+            } catch (Exception e) {
+                ctx.status(502).result("Failed to fetch remote image: " + e.getMessage());
+            }
+        });
         
         // WebSocket route
         app.ws("/ws/chat", ws -> {

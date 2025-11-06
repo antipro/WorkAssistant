@@ -397,6 +397,8 @@
 </head>
 <body>
     <div id="app">
+    <!-- Hidden paste catcher used as fallback when clipboard.read() doesn't expose image blobs -->
+    <div id="clipboardCatcher" contenteditable="true" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;" aria-hidden="true"></div>
         <!-- Login Screen -->
         <div v-if="!currentUser" class="login-screen">
             <div class="login-box">
@@ -537,6 +539,8 @@
             mounted() {
                 // Start polling for updates (fallback if WebSocket not connected)
                 this.startPolling();
+                // initialize hidden paste catcher for fallback paste capture
+                try { this.setupPasteCatcher(); } catch (e) { /* ignore */ }
             },
             beforeUnmount() {
                 if (this.pollInterval) {
@@ -785,44 +789,144 @@
                         alert('Please select a channel first');
                         return;
                     }
-                    
+
                     try {
+                        // Prefer the async clipboard read API when available
                         const clipboardItems = await navigator.clipboard.read();
                         const content = {
                             text: '',
+                            html: null,
+                            rtf: null,
                             images: []
                         };
-                        
+
                         for (const item of clipboardItems) {
-                            // Handle text
+                            // text/plain
                             if (item.types.includes('text/plain')) {
-                                const blob = await item.getType('text/plain');
-                                const text = await blob.text();
-                                content.text = text;
+                                try {
+                                    const blob = await item.getType('text/plain');
+                                    const text = await blob.text();
+                                    if (text && !content.text) content.text = text;
+                                } catch (e) {
+                                    // ignore
+                                }
                             }
-                            
-                            // Handle images
+
+                            // text/html
+                            if (item.types.includes('text/html')) {
+                                try {
+                                    const blob = await item.getType('text/html');
+                                    const html = await blob.text();
+                                    if (html) content.html = html;
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+
+                            // text/rtf (some platforms use text/rtf)
+                            if (item.types.includes('text/rtf') || item.types.includes('text/richtext')) {
+                                try {
+                                    const type = item.types.includes('text/rtf') ? 'text/rtf' : 'text/richtext';
+                                    const blob = await item.getType(type);
+                                    const rtf = await blob.text();
+                                    if (rtf) content.rtf = rtf;
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+
+                            // image files
                             for (const type of item.types) {
                                 if (type.startsWith('image/')) {
-                                    const blob = await item.getType(type);
-                                    // Convert blob to base64
-                                    const reader = new FileReader();
-                                    const base64Promise = new Promise((resolve, reject) => {
-                                        reader.onloadend = () => resolve(reader.result);
-                                        reader.onerror = () => reject(new Error('Failed to read image file'));
-                                        reader.readAsDataURL(blob);
-                                    });
-                                    const base64 = await base64Promise;
-                                    content.images.push({
-                                        data: base64,
-                                        type: type
-                                    });
+                                    try {
+                                        const blob = await item.getType(type);
+                                        const base64 = await new Promise((resolve, reject) => {
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => resolve(reader.result);
+                                            reader.onerror = () => reject(new Error('Failed to read image file'));
+                                            reader.readAsDataURL(blob);
+                                        });
+                                        content.images.push({ data: base64, type: type });
+                                    } catch (e) {
+                                        console.warn('Failed to read image clipboard item', e);
+                                    }
                                 }
                             }
                         }
-                        
+
+                        // Best-effort: if HTML contains remote <img src="http(s)://..."> try to fetch and include them (may be blocked by CORS)
+                        if (content.html) {
+                            try {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(content.html, 'text/html');
+                                const imgs = Array.from(doc.querySelectorAll('img')) || [];
+                                for (const img of imgs) {
+                                    const src = img.getAttribute('src');
+                                    if (!src) continue;
+                                    // Skip data URIs (server will extract these)
+                                    if (src.startsWith('data:')) continue;
+                                    // Try to fetch remote image (best-effort)
+                                    try {
+                                        const resp = await fetch(src, { mode: 'cors' });
+                                        if (resp.ok) {
+                                            const blob = await resp.blob();
+                                            if (blob.type && blob.type.startsWith('image/')) {
+                                                const dataUrl = await new Promise((resolve, reject) => {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => resolve(reader.result);
+                                                    reader.onerror = reject;
+                                                    reader.readAsDataURL(blob);
+                                                });
+                                                // Avoid duplicates
+                                                if (!content.images.find(i => i.data === dataUrl)) {
+                                                    content.images.push({ data: dataUrl, type: blob.type });
+                                                }
+                                            }
+                                        }
+                                    } catch (e) {
+                                        // CORS or network error — fallback to server proxy
+                                        try {
+                                            const proxyResp = await axios.post('/api/remote-image-proxy', { url: src }, { responseType: 'arraybuffer' });
+                                            if (proxyResp && proxyResp.status === 200 && proxyResp.data) {
+                                                const arr = new Uint8Array(proxyResp.data);
+                                                const blob = new Blob([arr], { type: proxyResp.headers['content-type'] || 'image/png' });
+                                                const dataUrl = await new Promise((resolve, reject) => {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => resolve(reader.result);
+                                                    reader.onerror = reject;
+                                                    reader.readAsDataURL(blob);
+                                                });
+                                                if (!content.images.find(i => i.data === dataUrl)) {
+                                                    content.images.push({ data: dataUrl, type: blob.type });
+                                                }
+                                            }
+                                        } catch (proxyErr) {
+                                            // ignore proxy errors
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                // parsing/fetch issues
+                            }
+                        }
+
+                        // If no images found but HTML exists, try fallback paste catcher to capture image blobs
+                        if (content.images.length === 0 && content.html) {
+                            try {
+                                const fallbackResult = await this.useFallbackPaste();
+                                if (fallbackResult && fallbackResult.images && fallbackResult.images.length > 0) {
+                                    // merge images from fallback
+                                    for (const im of fallbackResult.images) {
+                                        if (!content.images.find(i => i.data === im.data)) content.images.push(im);
+                                    }
+                                }
+                            } catch (e) {
+                                // ignore fallback errors
+                            }
+                        }
+
                         // Send clipboard content to server
-                        if (content.text || content.images.length > 0) {
+                        if ((content.text && content.text.trim()) || content.html || content.rtf || content.images.length > 0) {
                             this.sending = true;
                             try {
                                 const response = await axios.post('/api/chat/clipboard', {
@@ -830,9 +934,8 @@
                                     userId: this.currentUser.id,
                                     content: content
                                 });
-                                
+
                                 if (response.data.success) {
-                                    // Message will be broadcast via WebSocket or polling
                                     console.log('Clipboard content sent successfully');
                                 } else {
                                     alert('Failed to send clipboard content: ' + response.data.message);
@@ -880,6 +983,64 @@
                 handleImageError(event) {
                     console.error('Failed to load image:', event.target.src);
                     event.target.style.display = 'none';
+                },
+
+                // Setup paste catcher once on mount to capture image blobs from Ctrl+V when async clipboard API doesn't expose them
+                setupPasteCatcher() {
+                    try {
+                        const catcher = document.getElementById('clipboardCatcher');
+                        if (!catcher) return;
+                        catcher.addEventListener('paste', async (ev) => {
+                            try {
+                                const items = ev.clipboardData ? Array.from(ev.clipboardData.items) : [];
+                                const images = [];
+                                for (const it of items) {
+                                    if (it && it.type && it.type.startsWith('image/')) {
+                                        const blob = it.getAsFile ? it.getAsFile() : it.getAsFile();
+                                        if (blob) {
+                                            const dataUrl = await new Promise((res, rej) => {
+                                                const r = new FileReader();
+                                                r.onloadend = () => res(r.result);
+                                                r.onerror = rej;
+                                                r.readAsDataURL(blob);
+                                            });
+                                            images.push({ data: dataUrl, type: blob.type });
+                                        }
+                                    }
+                                }
+
+                                // store temporarily on the element for the caller to read
+                                catcher.__lastPaste = { images };
+                            } catch (e) {
+                                console.warn('paste catcher error', e);
+                            }
+                        });
+                    } catch (e) {
+                        // ignore
+                    }
+                },
+
+                // Programmatically focus the hidden catcher and wait briefly for user paste to occur
+                useFallbackPaste() {
+                    return new Promise((resolve) => {
+                        try {
+                            const catcher = document.getElementById('clipboardCatcher');
+                            if (!catcher) return resolve(null);
+                            catcher.__lastPaste = null;
+                            catcher.focus();
+                            // Instruct user to press Ctrl+V if needed
+                            const timeout = 1200; // wait up to ~1.2s for paste event
+                            const start = Date.now();
+                            const check = () => {
+                                if (catcher.__lastPaste) return resolve(catcher.__lastPaste);
+                                if (Date.now() - start > timeout) return resolve(null);
+                                setTimeout(check, 150);
+                            };
+                            check();
+                        } catch (e) {
+                            resolve(null);
+                        }
+                    });
                 },
                 
                 formatTime(timestamp) {

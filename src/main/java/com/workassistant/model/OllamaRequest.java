@@ -7,7 +7,7 @@ public class OllamaRequest {
     private String model;
     private String prompt;
     private boolean stream;
-    private boolean thinking;
+    private boolean think;
 
     public OllamaRequest() {
     }
@@ -16,21 +16,21 @@ public class OllamaRequest {
         this.model = model;
         this.prompt = prompt;
         this.stream = false;
-        this.thinking = false;
+        this.think = false;
     }
 
     public OllamaRequest(String model, String prompt, boolean stream) {
         this.model = model;
         this.prompt = prompt;
         this.stream = stream;
-        this.thinking = false;
+        this.think = false;
     }
 
-    public OllamaRequest(String model, String prompt, boolean stream, boolean thinking) {
+    public OllamaRequest(String model, String prompt, boolean stream, boolean think) {
         this.model = model;
         this.prompt = prompt;
         this.stream = stream;
-        this.thinking = thinking;
+        this.think = think;
     }
 
     public String getModel() {
@@ -55,5 +55,13 @@ public class OllamaRequest {
 
     public void setStream(boolean stream) {
         this.stream = stream;
+    }
+
+    public boolean isThink() {
+        return think;
+    }
+
+    public void setThink(boolean think) {
+        this.think = think;
     }
 }
