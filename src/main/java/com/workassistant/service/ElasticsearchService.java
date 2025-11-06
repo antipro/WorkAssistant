@@ -293,6 +293,15 @@ public class ElasticsearchService {
      * Index clipboard content document in Elasticsearch
      */
     public String indexClipboardContent(ClipboardContentDocument document) throws IOException {
+        // Log the image metadata being indexed
+        if (document.getImages() != null && !document.getImages().isEmpty()) {
+            logger.info("Indexing clipboard content with {} images", document.getImages().size());
+            for (ClipboardContentDocument.ImageMetadata img : document.getImages()) {
+                logger.info("  Image: {} with {} keywords", img.getPath(), 
+                    img.getKeywords() != null ? img.getKeywords().size() : 0);
+            }
+        }
+        
         // Use the same kb index for clipboard content
         IndexResponse response = client.index(IndexRequest.of(i -> i
             .index(indexName)

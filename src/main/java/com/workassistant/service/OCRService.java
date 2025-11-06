@@ -1,5 +1,6 @@
 package com.workassistant.service;
 
+import com.workassistant.util.TextUtils;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
 import org.slf4j.Logger;
@@ -219,9 +220,10 @@ public class OCRService {
             return new ArrayList<>();
         }
 
-        // Split by whitespace and punctuation
-        String[] words = text.toLowerCase()
-                .replaceAll("[^a-zA-Z0-9\\s]", " ")
+        // Split by punctuation and whitespace while preserving Unicode characters (including Chinese)
+        String[] words = text
+                .replaceAll(TextUtils.PUNCTUATION_PATTERN, " ")
+                .trim()
                 .split("\\s+");
 
         // Common English stop words to filter out
@@ -233,8 +235,18 @@ public class OCRService {
         );
 
         return Arrays.stream(words)
-                .filter(word -> word.length() > 3)  // Only words longer than 3 chars
-                .filter(word -> !stopWords.contains(word))
+                .filter(word -> !word.isEmpty())
+                .filter(word -> {
+                    // For Chinese/CJK characters: keep words with at least 2 characters
+                    // For English/Latin: keep words longer than 3 chars
+                    boolean hasCJK = TextUtils.containsCJKCharacters(word);
+                    if (hasCJK) {
+                        return word.length() >= 2;  // Chinese words can be meaningful with 2 chars
+                    } else {
+                        return word.length() > 3;  // English words need more than 3 chars
+                    }
+                })
+                .filter(word -> !stopWords.contains(word.toLowerCase()))
                 .distinct()
                 .limit(20)  // Limit to 20 keywords
                 .collect(Collectors.toList());
