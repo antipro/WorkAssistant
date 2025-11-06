@@ -257,6 +257,30 @@ class BinarizerTest {
     }
     
     @Test
+    void testBinarizeConfig_MorphKernelMustBeOddAndPositive() {
+        BinarizeConfig config = new BinarizeConfig();
+        
+        // Should throw exception for even kernel size
+        assertThrows(IllegalArgumentException.class, () -> {
+            config.setMorphKernelSize(4);
+        });
+        
+        // Should throw exception for non-positive kernel size
+        assertThrows(IllegalArgumentException.class, () -> {
+            config.setMorphKernelSize(0);
+        });
+        
+        assertThrows(IllegalArgumentException.class, () -> {
+            config.setMorphKernelSize(-1);
+        });
+        
+        // Should work for odd positive kernel size
+        assertDoesNotThrow(() -> {
+            config.setMorphKernelSize(3);
+        });
+    }
+    
+    @Test
     void testImageUtils_ToGrayscale() throws Exception {
         String imagePath = getTestImagePath("uniform.png");
         BufferedImage input = ImageUtils.loadImage(imagePath);
@@ -303,7 +327,11 @@ class BinarizerTest {
         }
         
         // Fallback to classpath
-        return getClass().getClassLoader().getResource("test-images/" + filename).getPath();
+        java.net.URL resource = getClass().getClassLoader().getResource("test-images/" + filename);
+        if (resource == null) {
+            throw new IllegalStateException("Test image not found: " + filename);
+        }
+        return resource.getPath();
     }
     
     private boolean hasBothBlackAndWhite(BufferedImage image) {

@@ -119,6 +119,12 @@ public class BinarizeConfig {
     }
     
     public BinarizeConfig setMorphKernelSize(int morphKernelSize) {
+        if (morphKernelSize <= 0) {
+            throw new IllegalArgumentException("Morphological kernel size must be positive");
+        }
+        if (morphKernelSize % 2 == 0) {
+            throw new IllegalArgumentException("Morphological kernel size must be odd");
+        }
         this.morphKernelSize = morphKernelSize;
         return this;
     }
