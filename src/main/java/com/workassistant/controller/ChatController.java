@@ -247,6 +247,10 @@ public class ChatController {
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         map.put("timestamp", ts);
         map.put("type", m.getType().name());
+        map.put("contentType", m.getContentType() != null ? m.getContentType().name() : "TEXT");
+        if (m.getClipboardData() != null) {
+            map.put("clipboardData", m.getClipboardData());
+        }
         return map;
     }
 
@@ -1098,21 +1102,34 @@ public class ChatController {
             
             String aiResponse = ollamaService.generateSimple(prompt.toString());
             
-            // Clean up the response - remove quotes, extra whitespace, etc.
-            String title = aiResponse.trim()
-                .replaceAll("^[\"']|[\"']$", "")  // Remove leading/trailing quotes
-                .replaceAll("Title:\\s*", "")      // Remove "Title:" prefix
-                .replaceAll("\\n.*", "");          // Remove everything after first newline
-            
-            // Truncate if too long
-            if (title.length() > 100) {
-                title = title.substring(0, 97) + "...";
-            }
+            // Clean up the response
+            String title = cleanAITitle(aiResponse);
             
             return title.isEmpty() ? "Clipboard Content" : title;
         } catch (Exception e) {
             logger.error("Failed to generate AI title", e);
             return "Clipboard Content";
         }
+    }
+    
+    /**
+     * Clean AI-generated title by removing quotes, prefixes, and extra content
+     */
+    private String cleanAITitle(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return "";
+        }
+        
+        String title = aiResponse.trim()
+            .replaceAll("^[\"']|[\"']$", "")  // Remove leading/trailing quotes
+            .replaceAll("Title:\\s*", "")      // Remove "Title:" prefix
+            .replaceAll("\\n.*", "");          // Remove everything after first newline
+        
+        // Truncate if too long
+        if (title.length() > 100) {
+            title = title.substring(0, 97) + "...";
+        }
+        
+        return title;
     }
 }
