@@ -83,16 +83,31 @@ public class KBFunctionProvider {
      */
     public static ArrayNode getAllFunctionTools() {
         ArrayNode allTools = objectMapper.createArrayNode();
-        
-        // Add KB tools
+
+        // Merge KB and Zentao tools and deduplicate by function.name
+        java.util.Map<String, ObjectNode> byName = new java.util.LinkedHashMap<>();
+
         ArrayNode kbTools = getKBFunctionTools();
-        kbTools.forEach(allTools::add);
-        
-        // Add Zentao tools
+        for (int i = 0; i < kbTools.size(); i++) {
+            ObjectNode node = (ObjectNode) kbTools.get(i);
+            ObjectNode fn = (ObjectNode) node.get("function");
+            if (fn != null && fn.has("name")) {
+                byName.putIfAbsent(fn.get("name").asText(), node);
+            }
+        }
+
         ArrayNode zentaoTools = ZentaoFunctionProvider.getZentaoFunctionTools();
-        zentaoTools.forEach(allTools::add);
-        
-        logger.debug("Created {} combined function tools (KB + Zentao)", allTools.size());
+        for (int i = 0; i < zentaoTools.size(); i++) {
+            ObjectNode node = (ObjectNode) zentaoTools.get(i);
+            ObjectNode fn = (ObjectNode) node.get("function");
+            if (fn != null && fn.has("name")) {
+                byName.putIfAbsent(fn.get("name").asText(), node);
+            }
+        }
+
+        byName.values().forEach(allTools::add);
+
+        logger.debug("Created {} combined function tools (KB + Zentao) deduplicated", allTools.size());
         return allTools;
     }
     
