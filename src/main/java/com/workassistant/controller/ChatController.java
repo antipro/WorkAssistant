@@ -522,22 +522,30 @@ public class ChatController {
         
         int count = 1;
         for (SummaryDocument doc : results) {
-            sb.append("### ").append(count).append(". ").append(doc.getTitle()).append("\n\n");
+            // Add title with null check
+            String title = doc.getTitle();
+            sb.append("### ").append(count).append(". ").append(title != null ? title : "Untitled").append("\n\n");
             
-            // Add a snippet of the content (first 300 characters)
+            // Add a snippet of the content (first 300 characters) with null check
             String content = doc.getContent();
-            if (content.length() > 300) {
-                content = content.substring(0, 300) + "...";
+            if (content != null) {
+                if (content.length() > 300) {
+                    content = content.substring(0, 300) + "...";
+                }
+                sb.append(content).append("\n\n");
+            } else {
+                sb.append("[No content]\n\n");
             }
-            sb.append(content).append("\n\n");
             
             // Add keywords if available
             if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
                 sb.append("**Keywords:** ").append(String.join(", ", doc.getKeywords())).append("\n\n");
             }
             
-            // Add metadata
-            sb.append("*Created: ").append(doc.getTimestamp()).append("*\n\n");
+            // Add metadata with null check
+            if (doc.getTimestamp() != null) {
+                sb.append("*Created: ").append(doc.getTimestamp()).append("*\n\n");
+            }
             
             if (count < results.size()) {
                 sb.append("---\n\n");
