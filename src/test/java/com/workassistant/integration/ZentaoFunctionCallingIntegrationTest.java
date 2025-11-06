@@ -79,7 +79,7 @@ class ZentaoFunctionCallingIntegrationTest {
     @Test
     void testChatRequestFormatWithTools() throws Exception {
         // Simulate building a chat request that would be sent to Ollama
-        String userPrompt = "What projects do we have?";
+        String userPrompt = "我们有哪些项目？";
         String model = "qwen3:8b";
         String toolsJson = ZentaoFunctionProvider.getZentaoFunctionToolsJson();
         

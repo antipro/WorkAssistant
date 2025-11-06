@@ -26,7 +26,7 @@ class OllamaServiceTest {
         // We can't test actual Ollama calls without a running instance,
         // but we can verify the method exists and handles input correctly
         
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         String toolCallsJson = "[{\"function\":{\"name\":\"get_projects\",\"arguments\":{}}}]";
         JsonNode toolCalls = objectMapper.readTree(toolCallsJson);
         String functionResult = "{\"projects\":[{\"id\":1,\"name\":\"Project Alpha\"}]}";
@@ -48,7 +48,7 @@ class OllamaServiceTest {
     void testContinueConversationWithFunctionResult_NullToolCalls() throws Exception {
         // Test handling of null tool calls
         OllamaService service = new OllamaService();
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         JsonNode toolCalls = null;
         String functionResult = "{}";
         String toolsJson = "[]";
@@ -63,7 +63,7 @@ class OllamaServiceTest {
     @Test
     void testContinueConversationWithFunctionResult_EmptyFunctionResult() throws Exception {
         // Test handling of empty function result
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         String toolCallsJson = "[{\"function\":{\"name\":\"get_projects\",\"arguments\":{}}}]";
         JsonNode toolCalls = objectMapper.readTree(toolCallsJson);
         String functionResult = "";
@@ -81,7 +81,7 @@ class OllamaServiceTest {
     @Test
     void testContinueConversationWithFunctionResult_MethodOverload() throws Exception {
         // Test that the overloaded method (without model parameter) exists
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         String toolCallsJson = "[{\"function\":{\"name\":\"get_projects\",\"arguments\":{}}}]";
         JsonNode toolCalls = objectMapper.readTree(toolCallsJson);
         String functionResult = "{\"projects\":[]}";
@@ -99,7 +99,7 @@ class OllamaServiceTest {
     @Test
     void testContinueConversationWithFunctionResult_WithModel() throws Exception {
         // Test the method with explicit model parameter
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         String model = "llama2";
         String toolCallsJson = "[{\"function\":{\"name\":\"get_projects\",\"arguments\":{}}}]";
         JsonNode toolCalls = objectMapper.readTree(toolCallsJson);

@@ -31,7 +31,7 @@ class FunctionResultRegularizationIntegrationTest {
         // This test verifies the structure of the method call, not the actual execution
         
         // Step 1: Original user prompt
-        String originalPrompt = "What projects do we have?";
+        String originalPrompt = "我们有哪些项目？";
         
         // Step 2: Tool calls from Ollama (simulated)
         String toolCallsJson = "[{\"function\":{\"name\":\"get_projects\",\"arguments\":{}}}]";
@@ -64,7 +64,7 @@ class FunctionResultRegularizationIntegrationTest {
     void testFunctionResultRegularizationFlow_WithTaskQuery() throws Exception {
         // Test with a more complex query involving task filtering
         
-        String originalPrompt = "Show me all tasks assigned to John that are in progress";
+        String originalPrompt = "显示所有分配给John且正在进行中的任务";
         
         String toolCallsJson = "[{" +
             "\"function\":{" +
