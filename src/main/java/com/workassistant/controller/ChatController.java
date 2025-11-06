@@ -267,22 +267,29 @@ public class ChatController {
                     prompt = "你好！我能帮你什么？";
                 }
                 
+                // Prepend username to the prompt for AI context
+                String username = userMessage.getUsername();
+                if (username == null || username.trim().isEmpty()) {
+                    username = "Unknown";
+                }
+                String promptWithUsername = "[User: " + username + "] " + prompt;
+                
                 // Use AI to determine user intent (SUMMARY, SEARCH, or CHAT)
-                Intent intent = determineIntentWithAI(prompt);
+                Intent intent = determineIntentWithAI(promptWithUsername);
                 if (intent == Intent.SUMMARY) {
-                    handleSummaryRequest(channelId, prompt, userMessage);
+                    handleSummaryRequest(channelId, promptWithUsername, userMessage);
                 } else if (intent == Intent.SEARCH) {
-                    handleSearchRequest(channelId, prompt, userMessage);
+                    handleSearchRequest(channelId, promptWithUsername, userMessage);
                 } else {
                     // Regular chat response with KB and Zentao function calling support
                     String allTools = KBFunctionProvider.getAllFunctionToolsJson();
-                    OllamaResponse response = ollamaService.generateChatWithTools(prompt, allTools);
+                    OllamaResponse response = ollamaService.generateChatWithTools(promptWithUsername, allTools);
                     String aiResponse = response.getResponse();
                     
                     // Check if the response is a function call
                     if (aiResponse != null && aiResponse.startsWith("FUNCTION_CALL:")) {
                         // Model wants to call a Zentao function
-                        handleFunctionCall(channelId, aiResponse, prompt);
+                        handleFunctionCall(channelId, aiResponse, promptWithUsername);
                     } else {
                         // Regular text response
                         Message aiMessage = chatService.sendAIMessage(channelId, aiResponse);
