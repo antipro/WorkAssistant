@@ -18,7 +18,7 @@ public class SystemMessageConfig {
     private static final Logger logger = LoggerFactory.getLogger(SystemMessageConfig.class);
     private static final String CONFIG_FILE_PATH = "config/default_system_message.json";
     private static final String ENV_VAR_NAME = "DEFAULT_SYSTEM_MESSAGE";
-    private static final String DEFAULT_MESSAGE = "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。";
+    private static final String DEFAULT_MESSAGE = "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。\n没有明确说明时，优先查询知识库。";
     
     private static SystemMessageConfig instance;
     private String defaultSystemMessage;
