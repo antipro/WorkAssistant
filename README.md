@@ -377,6 +377,138 @@ If IK analyzer is not installed, the system will fall back to the standard analy
 - `cors.enabled` - Enable/disable CORS (default: true)
 - `cors.origins` - Allowed origins (default: *)
 
+## Image Binarization
+
+WorkAssistant includes a comprehensive image binarization module for preprocessing images before OCR. Binarization converts grayscale or color images to high-quality black-and-white masks, improving OCR accuracy on low-contrast or unevenly lit images.
+
+### Features
+
+- **Multiple Algorithms**:
+  - **Global Thresholding**: Manual threshold (0-255)
+  - **Otsu's Method**: Automatic global thresholding (recommended for most cases)
+  - **Adaptive Mean**: Local thresholding using integral images (best for uneven lighting)
+  - **Adaptive Gaussian**: Local thresholding with Gaussian weighting
+
+- **Preprocessing Options**:
+  - Gaussian or median blur to reduce noise
+  - Morphological opening (remove speckles)
+  - Morphological closing (fill holes)
+
+- **Pure Java Implementation**: No native dependencies required by default
+- **Optional OpenCV Support**: For improved performance on large images
+- **Thread-safe**: Stateless design with configuration passed via `BinarizeConfig`
+
+### Programmatic Usage
+
+```java
+import com.workassistant.image.*;
+import java.awt.image.BufferedImage;
+
+// Example 1: Use Otsu's method with light blur (recommended for OCR)
+BinarizeConfig config = BinarizeConfig.forOCR();
+Binarizer binarizer = BinarizerFactory.createBinarizer(config);
+BufferedImage result = binarizer.binarize("input.jpg", config);
+ImageUtils.saveImage(result, "output.png");
+
+// Example 2: Use adaptive thresholding for uneven lighting
+BinarizeConfig config2 = BinarizeConfig.forUnevenLighting();
+Binarizer binarizer2 = BinarizerFactory.createBinarizer(config2);
+binarizer2.binarize("input.jpg", "output.png", config2);
+
+// Example 3: Custom configuration with global threshold
+BinarizeConfig config3 = new BinarizeConfig()
+    .setAlgorithm(BinarizeConfig.Algorithm.GLOBAL)
+    .setThreshold(128)
+    .setBlurKernelSize(3)
+    .setUseMorphologicalOpening(true);
+Binarizer binarizer3 = BinarizerFactory.createBinarizer(config3);
+BufferedImage result3 = binarizer3.binarize(inputImage, config3);
+```
+
+### CLI Usage
+
+The binarization module includes a command-line utility for processing images:
+
+```bash
+# Basic usage with Otsu's method and blur (recommended for OCR)
+java -cp target/work-assistant-1.0.0-SNAPSHOT.jar \
+  com.workassistant.cli.BinarizeCommand input.jpg output.png --blur 3
+
+# Adaptive thresholding for uneven lighting
+java -cp target/work-assistant-1.0.0-SNAPSHOT.jar \
+  com.workassistant.cli.BinarizeCommand input.jpg output.png \
+  --algorithm ADAPTIVE_MEAN --block-size 11 --c 2
+
+# Global thresholding with fixed threshold
+java -cp target/work-assistant-1.0.0-SNAPSHOT.jar \
+  com.workassistant.cli.BinarizeCommand input.jpg output.png \
+  --algorithm GLOBAL --threshold 128
+
+# With noise reduction and morphological operations
+java -cp target/work-assistant-1.0.0-SNAPSHOT.jar \
+  com.workassistant.cli.BinarizeCommand input.jpg output.png \
+  --blur 3 --median-blur --morph-open --morph-kernel 3
+```
+
+### Configuration Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `algorithm` | GLOBAL, OTSU, ADAPTIVE_MEAN, ADAPTIVE_GAUSSIAN | OTSU |
+| `threshold` | Threshold value for GLOBAL (0-255) | 128 |
+| `blockSize` | Window size for adaptive methods (must be odd) | 11 |
+| `C` | Constant subtracted from mean | 2.0 |
+| `blurKernelSize` | Blur kernel size (0 = no blur, must be odd) | 0 |
+| `useMedianBlur` | Use median blur instead of Gaussian | false |
+| `useMorphologicalOpening` | Apply opening to remove noise | false |
+| `useMorphologicalClosing` | Apply closing to fill holes | false |
+| `morphKernelSize` | Kernel size for morphological operations | 3 |
+
+### Recommended Parameters for OCR
+
+For best OCR results on different image types:
+
+**High-contrast documents (clean scans)**:
+```java
+BinarizeConfig.forOCR() // Otsu with 3x3 Gaussian blur
+```
+
+**Low-contrast or uneven lighting**:
+```java
+BinarizeConfig.forUnevenLighting() // Adaptive mean with block size 11, C=2
+```
+
+**Noisy images**:
+```java
+new BinarizeConfig()
+    .setAlgorithm(BinarizeConfig.Algorithm.OTSU)
+    .setBlurKernelSize(5)
+    .setUseMedianBlur(true)
+    .setUseMorphologicalOpening(true)
+```
+
+### Optional OpenCV Support
+
+For improved performance on large images, you can enable OpenCV support:
+
+1. Uncomment the OpenCV dependency in `pom.xml`:
+```xml
+<dependency>
+    <groupId>org.bytedeco</groupId>
+    <artifactId>opencv-platform</artifactId>
+    <version>4.8.1-1.5.10</version>
+</dependency>
+```
+
+2. Set the OpenCV flag in configuration:
+```java
+BinarizeConfig config = new BinarizeConfig()
+    .setUseOpenCV(true)
+    .setAlgorithm(BinarizeConfig.Algorithm.OTSU);
+```
+
+**Note**: OpenCV support is optional. The default pure Java implementation works well for most use cases and keeps the project easy to build without native dependencies.
+
 ## Technologies Used
 
 - **Java 17** - Programming language
@@ -389,6 +521,7 @@ If IK analyzer is not installed, the system will fall back to the standard analy
 - **Jackson 2.16.1** - JSON processing
 - **SLF4J 2.0.9** - Logging framework
 - **JUnit 5** - Testing framework
+- **Tesseract OCR** - Optical character recognition
 
 ## License
 

@@ -95,6 +95,16 @@
             <artifactId>tess4j</artifactId>
             <version>5.9.0</version>
         </dependency>
+
+        <!-- Optional: OpenCV for image binarization (commented by default) -->
+        <!-- Uncomment to use OpenCV-backed binarization for better performance -->
+        <!--
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv-platform</artifactId>
+            <version>4.8.1-1.5.10</version>
+        </dependency>
+        -->
     </dependencies>
 
     <build>
