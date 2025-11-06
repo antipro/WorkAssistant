@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workassistant.config.AppConfig;
+import com.workassistant.config.SystemMessageConfig;
 import com.workassistant.model.OllamaRequest;
 import com.workassistant.model.OllamaResponse;
 import okhttp3.*;
@@ -24,10 +25,12 @@ public class OllamaService {
     private final OkHttpClient client;
     private final ObjectMapper objectMapper;
     private final AppConfig config;
+    private final SystemMessageConfig systemMessageConfig;
     private final String baseUrl;
 
     public OllamaService() {
         this.config = AppConfig.getInstance();
+        this.systemMessageConfig = SystemMessageConfig.getInstance();
         this.baseUrl = config.getOllamaUrl();
         this.objectMapper = new ObjectMapper();
         this.client = new OkHttpClient.Builder()
@@ -281,14 +284,18 @@ public class OllamaService {
         logger.info("Continuing conversation with function result using model: {}", model);
 
         // Build chat request with full conversation history:
-        // 1. User's original message
-        // 2. Assistant's tool call response
-        // 3. Tool result message
+        // 1. (Optional) Default system message if configured
+        // 2. User's original message
+        // 3. Assistant's tool call response
+        // 4. Tool result message
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", model);
         root.put("stream", false);
 
         ArrayNode messages = objectMapper.createArrayNode();
+        
+        // Prepend default system message if configured and not already present
+        prependDefaultSystemMessage(messages);
         
         // Message 1: User's original prompt
         ObjectNode userMessage = objectMapper.createObjectNode();
@@ -402,6 +409,10 @@ public class OllamaService {
 
         // Create messages array with user message
         ArrayNode messages = objectMapper.createArrayNode();
+        
+        // Prepend default system message if configured and not already present
+        prependDefaultSystemMessage(messages);
+        
         ObjectNode userMessage = objectMapper.createObjectNode();
         userMessage.put("role", "user");
         userMessage.put("content", prompt);
@@ -474,6 +485,39 @@ public class OllamaService {
         } catch (IOException e) {
             logger.error("Error calling Ollama chat API with tools", e);
             throw e;
+        }
+    }
+    
+    /**
+     * Prepend default system message to messages array if configured and not already present.
+     * This method checks if the messages array already contains a system message as the first entry.
+     * If not, and if a default system message is configured, it prepends the default message.
+     * 
+     * @param messages The messages array to potentially prepend to
+     */
+    private void prependDefaultSystemMessage(ArrayNode messages) {
+        // Check if system message is enabled
+        if (!systemMessageConfig.isEnabled()) {
+            return;
+        }
+        
+        // Check if messages array already has a system message as the first entry
+        if (messages.size() > 0) {
+            JsonNode firstMessage = messages.get(0);
+            if (firstMessage.has("role") && "system".equals(firstMessage.get("role").asText())) {
+                logger.debug("System message already present, skipping default system message");
+                return;
+            }
+        }
+        
+        // Prepend the default system message
+        String defaultMessage = systemMessageConfig.getDefaultSystemMessage();
+        if (defaultMessage != null) {
+            ObjectNode systemMessage = objectMapper.createObjectNode();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", defaultMessage);
+            messages.insert(0, systemMessage);
+            logger.debug("Prepended default system message to chat request");
         }
     }
 }

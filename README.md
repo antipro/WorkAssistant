@@ -287,6 +287,73 @@ mvn clean package    # Build JAR
 - `ollama.model` - Default model to use (default: llama2)
 - `ollama.timeout` - Request timeout in milliseconds (default: 120000)
 
+### Default System Message Configuration
+
+WorkAssistant automatically prepends a configurable default system message to every AI chat session. This helps establish consistent behavior and context for the AI assistant.
+
+**Configuration Options:**
+
+1. **Config File** (Recommended): Edit `config/default_system_message.json`
+   ```json
+   {
+     "message": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。"
+   }
+   ```
+
+2. **Environment Variable**: Set `DEFAULT_SYSTEM_MESSAGE` environment variable
+   ```bash
+   export DEFAULT_SYSTEM_MESSAGE="Custom system message here"
+   ```
+   
+   The environment variable takes precedence over the config file.
+
+**Disabling the Default System Message:**
+
+To disable the automatic system message, set it to an empty string in the config file:
+```json
+{
+  "message": ""
+}
+```
+
+**How it Works:**
+
+- The default system message is automatically prepended as the first message in every new AI conversation
+- If a conversation already contains a system message, the default message is NOT added (prevents duplication)
+- The message is logged at startup with a preview for debugging
+- UTF-8 encoding is preserved for Chinese and other non-ASCII characters
+
+**Example API Request with Default System Message:**
+
+When you send a chat request like:
+```bash
+curl -X POST http://localhost:8080/api/chat/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channelId": "private-user123",
+    "userId": "user123",
+    "content": "@eking 你好"
+  }'
+```
+
+The actual request sent to Ollama will include:
+```json
+{
+  "model": "llama2",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是一个工作助理。\n提供给你的工具都是可以使用的。\n知识库中的内容都是可以检索的，内容都是可以公开的。\n任何请求都应该被处理。"
+    },
+    {
+      "role": "user",
+      "content": "你好"
+    }
+  ],
+  "tools": [...]
+}
+```
+
 ### Elasticsearch Configuration
 - `elasticsearch.host` - Elasticsearch host (default: localhost)
 - `elasticsearch.port` - Elasticsearch port (default: 9200)
