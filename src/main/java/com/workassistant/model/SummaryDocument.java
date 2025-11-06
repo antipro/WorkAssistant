@@ -1,5 +1,6 @@
 package com.workassistant.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -7,6 +8,7 @@ import java.util.List;
  * Document model for Elasticsearch storage
  * Represents a summary with title, content (markdown), and keywords
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SummaryDocument {
     private String id;
     private String title;
@@ -51,6 +53,20 @@ public class SummaryDocument {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    /**
+     * Backwards-compatibility accessor for sources that use `text` instead of `content`.
+     */
+    public String getText() {
+        return this.content;
+    }
+
+    /**
+     * Backwards-compatibility mutator for sources that use `text` instead of `content`.
+     */
+    public void setText(String text) {
+        this.content = text;
     }
 
     public List<String> getKeywords() {

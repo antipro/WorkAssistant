@@ -53,8 +53,7 @@ public class ZentaoFunctionProvider {
         
         ObjectNode function = objectMapper.createObjectNode();
         function.put("name", "get_projects");
-        function.put("description", "Get all projects from Zentao project management system");
-        
+        function.put("description", "从禅道项目管理系统获取所有项目");
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("type", "object");
         parameters.set("required", objectMapper.createArrayNode());
@@ -72,7 +71,7 @@ public class ZentaoFunctionProvider {
         
         ObjectNode function = objectMapper.createObjectNode();
         function.put("name", "get_tasks");
-        function.put("description", "Get tasks from Zentao project management system. Can filter by assignedTo, project, or status");
+        function.put("description", "从禅道项目管理系统获取任务。可通过 assignedTo、project 或 status 进行筛选");
         
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("type", "object");
@@ -84,17 +83,17 @@ public class ZentaoFunctionProvider {
         
         ObjectNode assignedTo = objectMapper.createObjectNode();
         assignedTo.put("type", "string");
-        assignedTo.put("description", "Filter tasks assigned to a specific user");
+        assignedTo.put("description", "筛选分配给特定用户的任务");
         properties.set("assignedTo", assignedTo);
         
         ObjectNode project = objectMapper.createObjectNode();
         project.put("type", "string");
-        project.put("description", "Filter tasks by project ID");
+        project.put("description", "通过项目ID筛选任务");
         properties.set("project", project);
         
         ObjectNode status = objectMapper.createObjectNode();
         status.put("type", "string");
-        status.put("description", "Filter tasks by status (e.g., 'doing', 'done', 'wait')");
+        status.put("description", "通过状态筛选任务（例如：'doing'，'done'，'wait'）");
         properties.set("status", status);
         
         parameters.set("properties", properties);
@@ -110,7 +109,7 @@ public class ZentaoFunctionProvider {
         
         ObjectNode function = objectMapper.createObjectNode();
         function.put("name", "get_bugs");
-        function.put("description", "Get bugs from Zentao project management system. Can filter by assignedTo, project, or status");
+        function.put("description", "从禅道项目管理系统获取缺陷。可通过 assignedTo、project 或 status 进行筛选");
         
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("type", "object");
@@ -122,17 +121,17 @@ public class ZentaoFunctionProvider {
         
         ObjectNode assignedTo = objectMapper.createObjectNode();
         assignedTo.put("type", "string");
-        assignedTo.put("description", "Filter bugs assigned to a specific user");
+        assignedTo.put("description", "筛选分配给特定用户的缺陷");
         properties.set("assignedTo", assignedTo);
         
         ObjectNode project = objectMapper.createObjectNode();
         project.put("type", "string");
-        project.put("description", "Filter bugs by project ID");
+        project.put("description", "通过项目ID筛选缺陷");
         properties.set("project", project);
         
         ObjectNode status = objectMapper.createObjectNode();
         status.put("type", "string");
-        status.put("description", "Filter bugs by status (e.g., 'active', 'resolved', 'closed')");
+        status.put("description", "通过状态筛选缺陷（例如：'active'，'resolved'，'closed'）");
         properties.set("status", status);
         
         parameters.set("properties", properties);

@@ -124,9 +124,9 @@ public class OllamaController {
 
         // Build function definitions JSON for the model (so it can decide to call them)
         String functionsJson = "[" +
-            "{\"name\":\"get_user_tasks\",\"description\":\"Get tasks assigned to a user.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"assignedTo\":{\"type\":\"string\"},\"project\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"}},\"required\":[]}}," +
-            "{\"name\":\"get_user_bugs\",\"description\":\"Get bugs assigned to a user.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"assignedTo\":{\"type\":\"string\"},\"project\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"}},\"required\":[]}}," +
-            "{\"name\":\"get_zentao_status\",\"description\":\"Check Zentao availability.\",\"parameters\":{\"type\":\"object\",\"properties\":{},\"required\":[]}}]";
+            "{\"name\":\"get_user_tasks\",\"description\":\"获取分配给用户的任务。\",\"parameters\":{\"type\":\"object\",\"properties\":{\"assignedTo\":{\"type\":\"string\",\"description\":\"分配给的用户\"},\"project\":{\"type\":\"string\",\"description\":\"项目名称\"},\"status\":{\"type\":\"string\",\"description\":\"任务状态\"}},\"required\":[]}}," +
+            "{\"name\":\"get_user_bugs\",\"description\":\"获取分配给用户的缺陷。\",\"parameters\":{\"type\":\"object\",\"properties\":{\"assignedTo\":{\"type\":\"string\",\"description\":\"分配给的用户\"},\"project\":{\"type\":\"string\",\"description\":\"项目名称\"},\"status\":{\"type\":\"string\",\"description\":\"缺陷状态\"}},\"required\":[]}}," +
+            "{\"name\":\"get_zentao_status\",\"description\":\"检查禅道服务是否可用。\",\"parameters\":{\"type\":\"object\",\"properties\":{},\"required\":[]}}]";
 
         // 1) Send prompt to Ollama (include function definitions so model can emit a function call)
             OllamaResponse initial = (model != null) ? ollamaService.generateWithFunctions(prompt, model, functionsJson) : ollamaService.generateWithFunctions(prompt, functionsJson);

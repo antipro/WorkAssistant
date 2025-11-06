@@ -49,7 +49,7 @@ public class KBFunctionProvider {
         
         ObjectNode function = objectMapper.createObjectNode();
         function.put("name", "query_kb");
-        function.put("description", "Search the knowledge base (kb) for relevant information. Use this to find summaries, clipboard content, notes, and other stored knowledge.");
+        function.put("description", "在知识库（kb）中搜索相关信息。用于查找摘要、剪贴板内容、笔记和其他存储的知识。");
         
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("type", "object");
@@ -62,12 +62,12 @@ public class KBFunctionProvider {
         
         ObjectNode query = objectMapper.createObjectNode();
         query.put("type", "string");
-        query.put("description", "Search query to find relevant knowledge. Can be keywords, phrases, or questions.");
+        query.put("description", "用于查找相关知识的搜索查询。可以是关键词、短语或问题。");
         properties.set("query", query);
         
         ObjectNode maxResults = objectMapper.createObjectNode();
         maxResults.put("type", "integer");
-        maxResults.put("description", "Maximum number of results to return (default: 5, max: 20)");
+        maxResults.put("description", "返回结果的最大数量（默认：5，最大：20）");
         properties.set("maxResults", maxResults);
         
         parameters.set("properties", properties);
