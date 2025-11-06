@@ -293,7 +293,7 @@ public class OllamaService {
         // Message 1: User's original prompt
         ObjectNode userMessage = objectMapper.createObjectNode();
         userMessage.put("role", "user");
-        userMessage.put("content", originalPrompt);
+        userMessage.put("content", "根据最初的用户问题，结合工具调用的结果，给出最终的回答：\n" + originalPrompt);
         messages.add(userMessage);
 
         // Message 2: Assistant's response with tool_calls

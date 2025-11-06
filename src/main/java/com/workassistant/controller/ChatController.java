@@ -947,7 +947,24 @@ public class ChatController {
      */
     public void sendClipboardContent(Context ctx) {
         try {
-            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            // If client provided a Content-Length and it's larger than our allowed limit, reject early
+            long maxAllowed = 20L * 1024L * 1024L; // 20 MB
+            Integer contentLength = ctx.contentLength();
+            if (contentLength != null && contentLength.longValue() > maxAllowed) {
+                logger.warn("Rejecting large clipboard upload: {} bytes", contentLength);
+                ctx.status(413).result("Payload too large. Max allowed is 20MB. Reduce image sizes or upload smaller payloads.");
+                return;
+            }
+
+            Map<String, Object> body;
+            try {
+                body = ctx.bodyAsClass(Map.class);
+            } catch (io.javalin.http.HttpResponseException hre) {
+                // Likely 'Content Too Large' from Javalin; return a 413 with helpful message
+                logger.warn("Request body too large for clipboard upload: {}", hre.getMessage());
+                ctx.status(413).result("Payload too large. Try reducing image sizes or increase server max request size.");
+                return;
+            }
             String channelId = (String) body.get("channelId");
             String userId = (String) body.get("userId");
             Map<String, Object> contentMap = (Map<String, Object>) body.get("content");

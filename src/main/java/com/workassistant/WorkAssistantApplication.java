@@ -34,6 +34,8 @@ public class WorkAssistantApplication {
 
         // Create and configure Javalin app
         Javalin app = Javalin.create(javalinConfig -> {
+            // Default is 1_000_000 bytes; set to 50MB here
+            javalinConfig.http.maxRequestSize = 50 * 1024 * 1024; // 50 MB
             // Enable CORS
             if (config.isCorsEnabled()) {
                 javalinConfig.bundledPlugins.enableCors(cors -> {
