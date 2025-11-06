@@ -562,22 +562,31 @@ public class ChatController {
         int count = 1;
         for (SummaryDocument doc : results) {
             sb.append("Document ").append(count).append(":\n");
-            sb.append("Title: ").append(doc.getTitle()).append("\n");
             
-            // Truncate content if too long
+            // Add title with null check
+            String title = doc.getTitle();
+            sb.append("Title: ").append(title != null ? title : "Untitled").append("\n");
+            
+            // Truncate content if too long, with null check
             String content = doc.getContent();
-            if (content != null && content.length() > MAX_CONTENT_LENGTH) {
-                content = content.substring(0, MAX_CONTENT_LENGTH) + "... [content truncated]";
+            if (content != null) {
+                if (content.length() > MAX_CONTENT_LENGTH) {
+                    content = content.substring(0, MAX_CONTENT_LENGTH) + "... [content truncated]";
+                }
+                sb.append("Content: ").append(content).append("\n");
+            } else {
+                sb.append("Content: [No content]\n");
             }
-            sb.append("Content: ").append(content).append("\n");
             
             // Add keywords if available
             if (doc.getKeywords() != null && !doc.getKeywords().isEmpty()) {
                 sb.append("Keywords: ").append(String.join(", ", doc.getKeywords())).append("\n");
             }
             
-            // Add timestamp
-            sb.append("Created: ").append(doc.getTimestamp()).append("\n");
+            // Add timestamp with null check
+            if (doc.getTimestamp() != null) {
+                sb.append("Created: ").append(doc.getTimestamp()).append("\n");
+            }
             sb.append("\n");
             count++;
         }
