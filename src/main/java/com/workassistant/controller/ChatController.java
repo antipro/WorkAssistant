@@ -267,21 +267,11 @@ public class ChatController {
                     prompt = "你好！我能帮你什么？";
                 }
                 
-                // Check if user wants to create a summary (contains "summary", "summarize", or "summarise")
-                boolean isSummaryRequest = prompt.toLowerCase().contains("summary") 
-                    || prompt.toLowerCase().contains("summarize") 
-                    || prompt.toLowerCase().contains("summarise");
-                
-                // Check if user wants to search (contains "search", "find", or "look for")
-                boolean isSearchRequest = prompt.toLowerCase().contains("search") 
-                    || prompt.toLowerCase().contains("find") 
-                    || prompt.toLowerCase().contains("look for")
-                    || prompt.toLowerCase().contains("查找")
-                    || prompt.toLowerCase().contains("搜索");
-                
-                if (isSummaryRequest && !isSearchRequest) {
+                // Use AI to determine user intent (SUMMARY, SEARCH, or CHAT)
+                Intent intent = determineIntentWithAI(prompt);
+                if (intent == Intent.SUMMARY) {
                     handleSummaryRequest(channelId, prompt, userMessage);
-                } else if (isSearchRequest) {
+                } else if (intent == Intent.SEARCH) {
                     handleSearchRequest(channelId, prompt, userMessage);
                 } else {
                     // Regular chat response with KB and Zentao function calling support
@@ -806,6 +796,37 @@ public class ChatController {
             i++;
         }
         return sb.toString();
+    }
+
+    /**
+     * Intent types used for AI intent classification
+     */
+    private enum Intent {
+        SUMMARY,
+        SEARCH,
+        CHAT
+    }
+
+    /**
+     * Ask the AI model to determine intent for a prompt.
+     * Returns SUMMARY, SEARCH, or CHAT. Falls back to CHAT on error.
+     */
+    private Intent determineIntentWithAI(String prompt) {
+        try {
+            // Build a short instruction for the model to classify intent
+            String instruction = "Classify the user's intent for the following prompt into one of: SUMMARY, SEARCH, or CHAT. "
+                + "Reply with a single word exactly: SUMMARY, SEARCH, or CHAT.\n\nPrompt:\n" + prompt;
+
+            String aiResp = ollamaService.generateSimple(instruction);
+            if (aiResp == null) return Intent.CHAT;
+            String cleaned = aiResp.trim().toUpperCase();
+            if (cleaned.startsWith("SUMMARY")) return Intent.SUMMARY;
+            if (cleaned.startsWith("SEARCH")) return Intent.SEARCH;
+            return Intent.CHAT;
+        } catch (Exception e) {
+            logger.warn("Intent detection failed, defaulting to CHAT: {}", e.getMessage());
+            return Intent.CHAT;
+        }
     }
 
     private List<Map<String, Object>> buildPersonalizedUserList(List<User> users, String currentUserId) {
