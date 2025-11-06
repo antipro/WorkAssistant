@@ -123,11 +123,19 @@ public class OCRService {
                     }
 
                     if (img != null) {
+                        // Re-encode sanitized image to PNG and OCR from file to avoid JPEG metadata quirks
+                        File tmp = null;
                         try {
-                            String text2 = tesseract.doOCR(img);
+                            tmp = File.createTempFile("ocr-sanitized-", ".png");
+                            ImageIO.write(img, "png", tmp);
+                            String text2 = tesseract.doOCR(tmp);
                             return text2 != null ? text2.trim() : "";
-                        } catch (TesseractException t2) {
+                        } catch (Exception t2) {
                             logger.error("Retry OCR failed for sanitized image {}", imageFile.getName(), t2);
+                        } finally {
+                            if (tmp != null && tmp.exists()) {
+                                try { tmp.delete(); } catch (Exception ignore) {}
+                            }
                         }
                     } else {
                         logger.warn("Unable to decode image bytes for {} after sanitization attempts", imageFile.getName());

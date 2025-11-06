@@ -1134,18 +1134,33 @@ public class ChatController {
         
         // Decode base64
         byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
-        
-        // Generate unique filename
-        String extension = type.split("/")[1];
+
+        // Try to decode bytes into BufferedImage and save as PNG for consistency
+        try {
+            java.io.InputStream in = new java.io.ByteArrayInputStream(imageBytes);
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
+            if (img != null) {
+                String filename = UUID.randomUUID().toString() + ".png";
+                String relativePath = filename;
+                String fullPath = WORK_IMAGES_DIR + "/" + filename;
+                java.io.File outputFile = new java.io.File(fullPath);
+                javax.imageio.ImageIO.write(img, "png", outputFile);
+                logger.info("Saved image as PNG: {}", fullPath);
+                return relativePath;
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to decode image bytes to BufferedImage (will fallback to raw save): {}", e.getMessage());
+        }
+
+        // Fallback: save raw bytes with extension inferred from mime type
+        String extension = "bin";
+        try { extension = type.split("/")[1]; } catch (Exception ignore) {}
         String filename = UUID.randomUUID().toString() + "." + extension;
         String relativePath = filename;
         String fullPath = WORK_IMAGES_DIR + "/" + filename;
-        
-        // Save to disk
         java.io.File outputFile = new java.io.File(fullPath);
         java.nio.file.Files.write(outputFile.toPath(), imageBytes);
-        
-        logger.info("Saved image: {}", fullPath);
+        logger.info("Saved raw image bytes: {}", fullPath);
         return relativePath;
     }
 
@@ -1153,14 +1168,31 @@ public class ChatController {
      * Save raw image bytes to disk and return relative path
      */
     private String saveImageBytes(byte[] bytes, String extension, String mime) throws Exception {
-        if (extension == null || extension.isEmpty()) extension = "png";
+        // Try to decode bytes and write as PNG for consistent storage and better OCR
+        try {
+            java.io.InputStream in = new java.io.ByteArrayInputStream(bytes);
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
+            if (img != null) {
+                String filename = UUID.randomUUID().toString() + ".png";
+                String relativePath = filename;
+                String fullPath = WORK_IMAGES_DIR + "/" + filename;
+                java.io.File outputFile = new java.io.File(fullPath);
+                javax.imageio.ImageIO.write(img, "png", outputFile);
+                logger.info("Saved image bytes as PNG: {} (mime={})", fullPath, mime);
+                return relativePath;
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to decode image bytes to BufferedImage (will fallback to raw save): {}", e.getMessage());
+        }
+
+        if (extension == null || extension.isEmpty()) extension = "bin";
         String filename = UUID.randomUUID().toString() + "." + extension;
         String relativePath = filename;
         String fullPath = WORK_IMAGES_DIR + "/" + filename;
 
         java.io.File outputFile = new java.io.File(fullPath);
         java.nio.file.Files.write(outputFile.toPath(), bytes);
-        logger.info("Saved image bytes: {} (mime={})", fullPath, mime);
+        logger.info("Saved raw image bytes: {} (mime={})", fullPath, mime);
         return relativePath;
     }
 
