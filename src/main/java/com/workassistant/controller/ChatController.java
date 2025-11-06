@@ -1334,6 +1334,7 @@ public class ChatController {
                 List<String> allKeywords = new ArrayList<>();
                 
                 if (clipboardData.getImages() != null) {
+                    logger.info("Processing {} images for OCR", clipboardData.getImages().size());
                     for (ClipboardData.ClipboardImage img : clipboardData.getImages()) {
                         if (ocrService.isAvailable()) {
                             String imagePath = WORK_IMAGES_DIR + "/" + img.getPath();
@@ -1348,21 +1349,41 @@ public class ChatController {
                                     new ClipboardContentDocument.ImageMetadata(img.getPath(), keywords);
                                 imageMetadataList.add(metadata);
                                 
-                                logger.info("Extracted {} keywords from image: {}", keywords.size(), img.getPath());
+                                logger.info("Extracted {} keywords from image {}: {}", keywords.size(), img.getPath(), keywords);
+                            } else {
+                                logger.warn("Image file not found: {}", imagePath);
                             }
+                        } else {
+                            logger.warn("OCR service not available for image: {}", img.getPath());
                         }
                     }
+                    logger.info("Created {} image metadata entries for Elasticsearch", imageMetadataList.size());
                 }
                 
                 // Extract keywords from text if available
                 if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
-                    String[] words = clipboardData.getText().toLowerCase()
-                        .replaceAll("[^a-zA-Z0-9\\s]", " ")
+                    // Split by punctuation while preserving Unicode characters (including Chinese)
+                    String[] words = clipboardData.getText()
+                        .replaceAll("[\\p{Punct}\\s]+", " ")
+                        .trim()
                         .split("\\s+");
                     
                     for (String word : words) {
-                        if (word.length() > MIN_KEYWORD_LENGTH) {
+                        if (word.isEmpty()) continue;
+                        
+                        // For Chinese/CJK characters: keep words with at least 2 characters
+                        // For English/Latin: keep words longer than MIN_KEYWORD_LENGTH
+                        boolean hasCJK = word.chars().anyMatch(c -> 
+                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
+                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
+                            Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                        );
+                        
+                        if (hasCJK && word.length() >= 2) {
                             allKeywords.add(word);
+                        } else if (!hasCJK && word.length() > MIN_KEYWORD_LENGTH) {
+                            allKeywords.add(word.toLowerCase());
                         }
                     }
                 }
