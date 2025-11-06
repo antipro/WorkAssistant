@@ -205,6 +205,9 @@
     </div>
 
     <script>
+        // Configuration
+        const AUTO_REFRESH_INTERVAL_MS = 30000; // 30 seconds
+        
         let statusData = null;
 
         async function fetchStatus() {
@@ -288,8 +291,8 @@
         // Fetch status on page load
         fetchStatus();
 
-        // Auto-refresh every 30 seconds
-        setInterval(fetchStatus, 30000);
+        // Auto-refresh based on configured interval
+        setInterval(fetchStatus, AUTO_REFRESH_INTERVAL_MS);
     </script>
 </body>
 </html>

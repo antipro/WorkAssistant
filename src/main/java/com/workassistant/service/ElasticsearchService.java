@@ -132,6 +132,11 @@ public class ElasticsearchService {
     /**
      * Create index with IK analyzer template if it doesn't exist
      * Unified schema for both summary and clipboard content documents
+     * 
+     * Schema field usage by document type:
+     * - Both types: title, keywords, timestamp, channelId, userId
+     * - Summary documents: content (markdown format)
+     * - Clipboard documents: text (plain text), images (nested array with paths and OCR keywords)
      */
     private void createIndexWithTemplate() throws IOException {
         AppConfig config = AppConfig.getInstance();

@@ -44,6 +44,7 @@ import java.util.regex.Pattern;
 public class ChatController {
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
     private static final int MIN_KEYWORD_LENGTH = 3;
+    private static final int MAX_KB_QUERY_RESULTS = 20;
     private static final String WORK_IMAGES_DIR = "work/images";
     
     private final ChatService chatService;
@@ -625,9 +626,9 @@ public class ChatController {
             String query = arguments.has("query") ? arguments.get("query").asText() : "";
             int maxResults = arguments.has("maxResults") ? arguments.get("maxResults").asInt(5) : 5;
             
-            // Limit maxResults to 20
-            if (maxResults > 20) {
-                maxResults = 20;
+            // Limit maxResults to MAX_KB_QUERY_RESULTS
+            if (maxResults > MAX_KB_QUERY_RESULTS) {
+                maxResults = MAX_KB_QUERY_RESULTS;
             }
             
             if (query == null || query.trim().isEmpty()) {
