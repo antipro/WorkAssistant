@@ -114,8 +114,15 @@ public class ElasticsearchService {
 
         RestClient restClient = builder.build();
         
+        // Configure Jackson ObjectMapper to handle Java 8 date/time types
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        // Register the Java Time module for LocalDateTime, Instant, etc.
+        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        // Ensure dates are serialized in ISO format rather than timestamps when needed
+        objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
         RestClientTransport transport = new RestClientTransport(
-            restClient, new JacksonJsonpMapper()
+            restClient, new JacksonJsonpMapper(objectMapper)
         );
         
         this.client = new ElasticsearchClient(transport);

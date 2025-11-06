@@ -50,10 +50,10 @@ public class OllamaService {
     public OllamaResponse generate(String prompt, String model) throws IOException {
         logger.info("Generating completion with model: {}", model);
 
-        OllamaRequest request = new OllamaRequest(model, prompt, false);
-    String jsonRequest = objectMapper.writeValueAsString(request);
-    // Print outgoing request to stdout so it is captured in app.out.log
-    System.out.println("OLLAMA REQUEST: " + jsonRequest);
+        OllamaRequest request = new OllamaRequest(model, prompt, false, false);
+        String jsonRequest = objectMapper.writeValueAsString(request);
+        // Print outgoing request to stdout so it is captured in app.out.log
+        System.out.println("OLLAMA REQUEST: " + jsonRequest);
 
         RequestBody body = RequestBody.create(jsonRequest, JSON);
         Request httpRequest = new Request.Builder()

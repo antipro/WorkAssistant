@@ -262,7 +262,7 @@ public class ChatController {
                 String prompt = content.replace("@eking", "").trim();
                 
                 if (prompt.isEmpty()) {
-                    prompt = "Hello! How can I help you?";
+                    prompt = "你好！我能帮你什么？";
                 }
                 
                 // Check if user wants to create a summary (contains "summary", "summarize", or "summarise")
@@ -317,11 +317,11 @@ public class ChatController {
             String originalUserMessage = userMessage.getContent();
             
             // Create a summary prompt
-            String summaryPrompt = "Please create a structured summary in markdown format with the following sections:\n" +
-                "1. Title (one line)\n" +
-                "2. Summary (markdown formatted)\n" +
-                "3. Keywords (comma-separated list)\n\n" +
-                "For this request: " + prompt;
+            String summaryPrompt = "请用 markdown 格式生成结构化摘要，包含以下部分：\n" +
+                "1. 标题（单行）\n" +
+                "2. 摘要（markdown 格式）\n" +
+                "3. 关键词（用逗号分隔）\n\n" +
+                "针对本次请求：" + prompt;
             
             String aiResponse = ollamaService.generateSimple(summaryPrompt);
             
@@ -909,29 +909,85 @@ public class ChatController {
      */
     private ClipboardData parseClipboardContent(Map<String, Object> contentMap) throws Exception {
         ClipboardData data = new ClipboardData();
-        
-        // Parse text
+
+        // 1) Plain text if provided
         if (contentMap.containsKey("text")) {
-            data.setText((String) contentMap.get("text"));
+            Object t = contentMap.get("text");
+            if (t != null) data.setText((String) t);
         }
-        
-        // Parse images
+
+        // 2) Explicit images array (existing format: list of {data,type})
         if (contentMap.containsKey("images")) {
             List<Map<String, String>> imagesList = (List<Map<String, String>>) contentMap.get("images");
-            for (Map<String, String> imageMap : imagesList) {
-                String base64Data = imageMap.get("data");
-                String type = imageMap.get("type");
-                
-                // Save image and get path
-                String imagePath = saveBase64Image(base64Data, type);
-                
-                ClipboardData.ClipboardImage image = new ClipboardData.ClipboardImage();
-                image.setPath(imagePath);
-                image.setType(type);
-                data.addImage(image);
+            if (imagesList != null) {
+                for (Map<String, String> imageMap : imagesList) {
+                    String base64Data = imageMap.get("data");
+                    String type = imageMap.get("type");
+
+                    // Save image and get path
+                    String imagePath = saveBase64Image(base64Data, type);
+
+                    ClipboardData.ClipboardImage image = new ClipboardData.ClipboardImage();
+                    image.setPath(imagePath);
+                    image.setType(type);
+                    data.addImage(image);
+                }
             }
         }
-        
+
+        // 3) HTML content: extract inner text and any embedded data-URI images
+        if (contentMap.containsKey("html")) {
+            String html = (String) contentMap.get("html");
+            if (html != null && !html.isEmpty()) {
+                // If no plain text was provided, convert HTML to plain text
+                if (data.getText() == null || data.getText().isEmpty()) {
+                    data.setText(htmlToPlainText(html));
+                }
+
+                // Extract data-URI images from HTML
+                List<Map<String, Object>> extracted = extractImagesFromHtmlDataUris(html);
+                for (Map<String, Object> item : extracted) {
+                    byte[] bytes = (byte[]) item.get("bytes");
+                    String mime = (String) item.get("mime");
+                    String ext = mime != null && mime.contains("/") ? mime.split("/")[1] : "png";
+                    String saved = saveImageBytes(bytes, ext, mime);
+
+                    ClipboardData.ClipboardImage image = new ClipboardData.ClipboardImage();
+                    image.setPath(saved);
+                    image.setType(mime != null ? mime : "image/unknown");
+                    data.addImage(image);
+                }
+            }
+        }
+
+        // 4) RTF content: try to extract embedded images (\pict ... hex) and a crude plain-text
+        if (contentMap.containsKey("rtf")) {
+            String rtf = (String) contentMap.get("rtf");
+            if (rtf != null && !rtf.isEmpty()) {
+                // If no text yet, try to derive basic plain text from RTF
+                if (data.getText() == null || data.getText().isEmpty()) {
+                    // crude RTF -> plain conversion: remove control words and braces
+                    String plain = rtf.replaceAll("\\\\[a-zA-Z]+-?\\d*\s?", "");
+                    plain = plain.replaceAll("[{}]", "");
+                    data.setText(plain.trim());
+                }
+
+                // Extract images embedded in RTF (pict blocks)
+                List<Map<String, Object>> rtfImgs = extractImagesFromRtf(rtf);
+                for (Map<String, Object> item : rtfImgs) {
+                    byte[] bytes = (byte[]) item.get("bytes");
+                    String mime = (String) item.get("mime");
+                    String ext = mime != null && mime.contains("/") ? mime.split("/")[1] : "png";
+                    String saved = saveImageBytes(bytes, ext, mime);
+
+                    ClipboardData.ClipboardImage image = new ClipboardData.ClipboardImage();
+                    image.setPath(saved);
+                    image.setType(mime != null ? mime : "image/unknown");
+                    data.addImage(image);
+                }
+            }
+        }
+
         return data;
     }
     
@@ -960,6 +1016,111 @@ public class ChatController {
         
         logger.info("Saved image: {}", fullPath);
         return relativePath;
+    }
+
+    /**
+     * Save raw image bytes to disk and return relative path
+     */
+    private String saveImageBytes(byte[] bytes, String extension, String mime) throws Exception {
+        if (extension == null || extension.isEmpty()) extension = "png";
+        String filename = UUID.randomUUID().toString() + "." + extension;
+        String relativePath = filename;
+        String fullPath = WORK_IMAGES_DIR + "/" + filename;
+
+        java.io.File outputFile = new java.io.File(fullPath);
+        java.nio.file.Files.write(outputFile.toPath(), bytes);
+        logger.info("Saved image bytes: {} (mime={})", fullPath, mime);
+        return relativePath;
+    }
+
+    /**
+     * Convert a simple HTML string to plain text by stripping tags.
+     * This is intentionally lightweight; for full HTML sanitization consider using a library.
+     */
+    private String htmlToPlainText(String html) {
+        if (html == null) return null;
+        // Remove script/style blocks
+        String cleaned = html.replaceAll("(?s)<script.*?>.*?</script>", "");
+        cleaned = cleaned.replaceAll("(?s)<style.*?>.*?</style>", "");
+        // Replace tags with spaces
+        cleaned = cleaned.replaceAll("<[^>]+>", " ");
+        // Decode common HTML entities (very small subset)
+        cleaned = cleaned.replaceAll("&nbsp;", " ").replaceAll("&amp;", "&");
+        cleaned = cleaned.replaceAll("&lt;", "<").replaceAll("&gt;", ">");
+        // Collapse whitespace
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        return cleaned;
+    }
+
+    /**
+     * Extract data-URI images from HTML and return list of maps with keys: "bytes" (byte[]), "mime" (String)
+     */
+    private List<Map<String, Object>> extractImagesFromHtmlDataUris(String html) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        if (html == null) return results;
+
+        // Find data:image/...;base64,XXXX
+        Pattern p = Pattern.compile("data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\\r\\n]+)", Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(html);
+        while (m.find()) {
+            String mime = m.group(1);
+            String b64 = m.group(2).replaceAll("\\s+", "");
+            try {
+                byte[] bytes = java.util.Base64.getDecoder().decode(b64);
+                Map<String, Object> item = new HashMap<>();
+                item.put("bytes", bytes);
+                item.put("mime", mime);
+                results.add(item);
+            } catch (IllegalArgumentException e) {
+                logger.warn("Failed to decode base64 image from HTML: {}", e.getMessage());
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Extract embedded images from RTF content. Looks for \n\\pict ... hexdata ... sequences.
+     * Returns list of maps with keys: "bytes" (byte[]), "mime" (String)
+     */
+    private List<Map<String, Object>> extractImagesFromRtf(String rtf) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        if (rtf == null) return results;
+
+        // RTF pict blocks often look like: {\*\pict\pngblip ...hex...}
+        Pattern p = Pattern.compile("\\\\pict\\\\([a-zA-Z0-9]+)\\\\blip[^{]*?([0-9A-Fa-f\\r\\n]+)", Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(rtf);
+        while (m.find()) {
+            String format = m.group(1); // e.g., png, jpeg, jpg
+            String hex = m.group(2).replaceAll("\\s+", "");
+            try {
+                byte[] bytes = hexStringToByteArray(hex);
+                String mime = null;
+                if (format.toLowerCase().contains("png")) mime = "image/png";
+                else if (format.toLowerCase().contains("jpeg") || format.toLowerCase().contains("jpg")) mime = "image/jpeg";
+                else if (format.toLowerCase().contains("bmp")) mime = "image/bmp";
+                else mime = "image/unknown";
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("bytes", bytes);
+                item.put("mime", mime);
+                results.add(item);
+            } catch (Exception e) {
+                logger.warn("Failed to extract image from RTF: {}", e.getMessage());
+            }
+        }
+
+        return results;
+    }
+
+    private byte[] hexStringToByteArray(String s) {
+        if (s == null || s.isEmpty()) return new byte[0];
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                                 + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
     
     /**
@@ -1107,25 +1268,25 @@ public class ChatController {
      */
     private String generateClipboardTitle(ClipboardData clipboardData, List<String> keywords) {
         try {
-            StringBuilder prompt = new StringBuilder("Generate a short, descriptive title (max 10 words) for the following content:\n\n");
+            StringBuilder prompt = new StringBuilder("请为以下内容生成一个简短且有描述性的标题（不超过10个词）：\n\n");
             
             if (clipboardData.getText() != null && !clipboardData.getText().isEmpty()) {
                 String text = clipboardData.getText();
                 if (text.length() > 500) {
                     text = text.substring(0, 500) + "...";
                 }
-                prompt.append("Text: ").append(text).append("\n\n");
+                prompt.append("文本: ").append(text).append("\n\n");
             }
             
             if (clipboardData.getImages() != null && !clipboardData.getImages().isEmpty()) {
-                prompt.append("Images: ").append(clipboardData.getImages().size()).append("\n\n");
+                prompt.append("图片: ").append(clipboardData.getImages().size()).append("\n\n");
             }
             
             if (!keywords.isEmpty()) {
-                prompt.append("Keywords: ").append(String.join(", ", keywords.subList(0, Math.min(10, keywords.size())))).append("\n\n");
+                prompt.append("关键词: ").append(String.join(", ", keywords.subList(0, Math.min(10, keywords.size())))).append("\n\n");
             }
             
-            prompt.append("Reply with ONLY the title, nothing else.");
+            prompt.append("只回复标题，不要回复其他内容。");
             
             String aiResponse = ollamaService.generateSimple(prompt.toString());
             

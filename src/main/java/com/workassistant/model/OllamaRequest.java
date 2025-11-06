@@ -7,14 +7,30 @@ public class OllamaRequest {
     private String model;
     private String prompt;
     private boolean stream;
+    private boolean thinking;
 
     public OllamaRequest() {
+    }
+
+    public OllamaRequest(String model, String prompt) {
+        this.model = model;
+        this.prompt = prompt;
+        this.stream = false;
+        this.thinking = false;
     }
 
     public OllamaRequest(String model, String prompt, boolean stream) {
         this.model = model;
         this.prompt = prompt;
         this.stream = stream;
+        this.thinking = false;
+    }
+
+    public OllamaRequest(String model, String prompt, boolean stream, boolean thinking) {
+        this.model = model;
+        this.prompt = prompt;
+        this.stream = stream;
+        this.thinking = thinking;
     }
 
     public String getModel() {
